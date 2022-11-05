@@ -324,8 +324,6 @@ class YoloObjectDetector(BaseHandler):
                 result_cur_img = []
             result.append(result_cur_img)
 
-        print('******** result = ', result)
-
         return result
 
     def get_insights(self, tensor_data, _, target=0):
