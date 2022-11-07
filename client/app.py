@@ -20,6 +20,8 @@ def draw_detections(detections, img):
     
     for detection in detections:
         draw.rectangle(detection['coords'])
+        upper_left_xy = detection['coords'][:2]
+        draw.text(upper_left_xy, str(round(detection['conf'], 3)))
 
     st.image(img)    
 
