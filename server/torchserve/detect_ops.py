@@ -8,7 +8,7 @@ NUM_CLASSES = 1
 class IDetectOps(nn.Module):
     "Operations of the detect layer of YOLO v7 that can't be traced with Torchscript."
     stride = [8, 16, 32]  # strides computed during build
-    # Gotten from https://github.com/WongKinYiu/yolov7/cfg/deploy/yolov7-tiny-silu.yaml
+    # Gotten from https://github.com/WongKinYiu/yolov7/cfg/deploy/yolov7-tiny.yaml
     # To use a different architecture/model size, replace with the corresponding values
     anchors = [
         [10,13, 16,30, 33,23],  # P3/8
@@ -32,8 +32,12 @@ class IDetectOps(nn.Module):
         z = [] 
         for i in range(len(x)):
             bs, _, ny, nx, _ = x[i].shape
-            if len(self.grid) <= i:
-                self.grid.append(self._make_grid(nx, ny).to(x[i].device))
+            if (len(self.grid) <= i) or (self.grid[i].shape[2:4] != (ny, nx)):
+                grid_i = self._make_grid(nx, ny).to(x[i].device)
+                if len(self.grid) <= i:
+                    self.grid.append(grid_i)
+                else:
+                    self.grid[i] = grid_i
 
             y = x[i].sigmoid()
             y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i]) * self.stride[i]  # xy
