@@ -5,7 +5,12 @@ import requests
 import streamlit as st
 
 
-config = Config()
+@st.cache(ttl=300)
+def get_config():
+    return Config()
+
+
+config = get_config()
 
 
 def bytes_to_image(bytes_data):
