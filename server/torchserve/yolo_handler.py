@@ -11,8 +11,14 @@ import torch.nn as nn
 import torchvision
 from torchvision import transforms
 from ts.torch_handler.base_handler import BaseHandler
-# Relative import to make both tests and TorchServe work
-from .detect_ops import IDetectOps
+
+# Make aux files imports work for both tests and TorchServe
+is_test = "torchserve." in __name__
+if is_test:
+    from .detect_ops import IDetectOps
+else:
+    # Inside TorchServe server
+    from detect_ops import IDetectOps
 
 
 CONFIDENCE_IDX = 4
