@@ -32,7 +32,7 @@ def _add_requirements(script_str, requirements_path):
         requirements_str = f.read()
     return (script_str + 
         f'echo "{requirements_str}" > requirements.txt\n' +
-        'pip install -r requirements.txt\n'
+        'pip3 install -r requirements.txt\n'
     )
 
 
@@ -68,8 +68,12 @@ if __name__ == '__main__':
         description="""Generate a EC2 user data bash script that setups an EC2 instance and starts a TorchServe
         instance that serves the model object_detector.mar stored in the S3 bucket given by the param 'bucket_name'"""
     )
-    parser.add_argument('--bucket-name', type=str, help='name of S3 bucket that contains the model .mar file', required=True)
-    parser.add_argument('--output-path', type=str, default='user_data.sh', help='path where the generated script should be written')
+    parser.add_argument(
+        '--bucket-name', type=str, help='name of S3 bucket that contains the model .mar file', required=True
+    )
+    parser.add_argument(
+        '--output-path', type=str, default='user_data.sh', help='path where the generated script should be written'
+    )
     default_req_path = Path(__file__).resolve().parent.parent.parent.parent / 'requirements.txt'
     parser.add_argument(
         '--req-path', type=str, default=default_req_path, 

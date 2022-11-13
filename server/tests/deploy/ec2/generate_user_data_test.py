@@ -16,7 +16,7 @@ sudo yum update -y
 sudo yum install -y java-17-amazon-corretto-headless
 
 echo "{REQUIREMENTS_PLACEHOLDER}" > requirements.txt
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 
 # Download model file (.mar) from S3 to EC2 instance
 mkdir models
