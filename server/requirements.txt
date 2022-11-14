@@ -1,2 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 captum
+torch
+torch-model-archiver
 torchserve
+torchvision
+# torch==1.13.0+cpu

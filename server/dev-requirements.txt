@@ -1,5 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 captum
 pytest
 torch
+torch-model-archiver
 torchserve
 torchvision
