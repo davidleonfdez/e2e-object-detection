@@ -1,7 +1,7 @@
 from config import Config
 import io
 from PIL import Image, ImageDraw
-import requests
+from services import BaseDetectionService, RestDetectionService
 import streamlit as st
 import time
 from typing import List, Dict
@@ -17,6 +17,7 @@ def get_config():
 
 
 config = get_config()
+detection_service = RestDetectionService()
 
 
 def bytes_to_image(bytes_data):
@@ -55,9 +56,8 @@ def draw_detections(detections, img):
     st.image(img)    
 
 
-def detect_and_draw(uploaded_file, sent_img_sz):
+def detect_and_draw(uploaded_file, sent_img_sz, detection_service:BaseDetectionService):
     bytes_img = uploaded_file.getvalue()
-    api_url = config.backend_url
 
     img = bytes_to_image(bytes_img)
     scale = sent_img_sz / max(img.size)
@@ -69,15 +69,15 @@ def detect_and_draw(uploaded_file, sent_img_sz):
             resample=Image.Resampling.BILINEAR
         ))
 
-    detection_response = requests.post(api_url, {'data': bytes_img})
+    detection_result = detection_service.detect(bytes_img, config)
 
-    if detection_response.ok:
-        detections = detection_response.json()
+    if not detection_result.is_error:
+        detections = detection_result.detections
         if should_resize:
             detections = scale_back_detections(detections, scale)
         draw_detections(detections, img)      
     else:
-        error_text = f'Error in request to {api_url}'
+        error_text = detection_result.error_msg
         st.error(error_text)
         print(error_text)
 
@@ -90,4 +90,4 @@ sent_img_sz = st.selectbox(
 uploaded_file = st.file_uploader("Upload an image", label_visibility="visible")
 
 if uploaded_file is not None:
-    detect_and_draw(uploaded_file, sent_img_sz)
+    detect_and_draw(uploaded_file, sent_img_sz, detection_service)
