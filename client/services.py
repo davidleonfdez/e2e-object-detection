@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from config import Config
 from dataclasses import dataclass
+import grpc
+from grpc_aux import inference_pb2, inference_pb2_grpc
+import json
 import requests
 from typing import Dict, List
 
@@ -31,3 +34,22 @@ class RestDetectionService(BaseDetectionService):
         else:
             error_text = f'Error in request to {api_url}'
             return DetectionResult(error_msg=error_text)
+
+
+class GRPCDetectionService(BaseDetectionService):
+    def __init__(self, config):
+        # TODO: load url from config
+        channel = grpc.insecure_channel('127.0.0.1:7070')
+        self.stub = inference_pb2_grpc.InferenceAPIsServiceStub(channel)
+    
+    def detect(self, bytes_img:bytes, config:Config) -> DetectionResult:
+        # TODO: update stub if config changed
+        try:        
+            response = self.stub.Predictions(
+                inference_pb2.PredictionsRequest(model_name='object_detector',
+                                                input={'data': bytes_img}))
+
+            prediction = json.loads(response.prediction.decode('utf-8'))
+            return DetectionResult(detections=prediction)
+        except grpc.RpcError as e:
+            return DetectionResult(error_msg=str(e))

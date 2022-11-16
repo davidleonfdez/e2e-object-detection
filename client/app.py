@@ -1,7 +1,7 @@
 from config import Config
 import io
 from PIL import Image, ImageDraw
-from services import BaseDetectionService, RestDetectionService
+from services import BaseDetectionService, GRPCDetectionService, RestDetectionService
 import streamlit as st
 import time
 from typing import List, Dict
@@ -17,7 +17,8 @@ def get_config():
 
 
 config = get_config()
-detection_service = RestDetectionService()
+#detection_service = RestDetectionService()
+detection_service = GRPCDetectionService(config)
 
 
 def bytes_to_image(bytes_data):
