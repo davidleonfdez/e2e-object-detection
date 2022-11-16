@@ -26,7 +26,7 @@ class BaseDetectionService(ABC):
 
 class RestDetectionService(BaseDetectionService):
     def detect(self, bytes_img:bytes, config:Config) -> DetectionResult:
-        api_url = config.backend_url
+        api_url = f'http://{config.backend_host}:{config.rest_api_port}/predictions/{config.model_name}'
         response = requests.post(api_url, {'data': bytes_img})
 
         if response.ok:
@@ -38,15 +38,15 @@ class RestDetectionService(BaseDetectionService):
 
 class GRPCDetectionService(BaseDetectionService):
     def __init__(self, config):
-        # TODO: load url from config
-        channel = grpc.insecure_channel('127.0.0.1:7070')
+        api_url = f'{config.backend_host}:{config.grpc_api_port}'
+        channel = grpc.insecure_channel(api_url)
         self.stub = inference_pb2_grpc.InferenceAPIsServiceStub(channel)
     
     def detect(self, bytes_img:bytes, config:Config) -> DetectionResult:
         # TODO: update stub if config changed
         try:        
             response = self.stub.Predictions(
-                inference_pb2.PredictionsRequest(model_name='object_detector',
+                inference_pb2.PredictionsRequest(model_name=config.model_name,
                                                 input={'data': bytes_img}))
 
             prediction = json.loads(response.prediction.decode('utf-8'))
