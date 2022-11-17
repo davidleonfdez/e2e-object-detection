@@ -38,8 +38,8 @@ class RestDetectionService(BaseDetectionService):
 
 class GRPCDetectionService(BaseDetectionService):
     def __init__(self, config):
-        api_url = f'{config.backend_host}:{config.grpc_api_port}'
-        channel = grpc.insecure_channel(api_url)
+        self.api_url = f'{config.backend_host}:{config.grpc_api_port}'
+        channel = grpc.insecure_channel(self.api_url)
         self.stub = inference_pb2_grpc.InferenceAPIsServiceStub(channel)
     
     def detect(self, bytes_img:bytes, config:Config) -> DetectionResult:

@@ -9,6 +9,8 @@ from typing import List, Dict
 
 MAX_SIZE = 640
 COORDS_RESULT_KEY = 'coords'
+REST_API_SELECT_ITEM = "REST"
+GRPC_API_SELECT_ITEM = "gRPC"
 
 
 @st.cache(ttl=300)
@@ -16,9 +18,12 @@ def get_config():
     return Config()
 
 
+@st.cache(ttl=300, hash_funcs={GRPCDetectionService: lambda serv: serv.api_url})
+def get_service(api_type):
+    return RestDetectionService() if api_type == REST_API_SELECT_ITEM else GRPCDetectionService(get_config())
+
+
 config = get_config()
-#detection_service = RestDetectionService()
-detection_service = GRPCDetectionService(config)
 
 
 def bytes_to_image(bytes_data):
@@ -88,7 +93,12 @@ sent_img_sz = st.selectbox(
     options=[MAX_SIZE, MAX_SIZE // 2, MAX_SIZE // 4]
 )
 
+api_type = st.selectbox(
+    label="API",
+    options=[REST_API_SELECT_ITEM, GRPC_API_SELECT_ITEM]
+)
+
 uploaded_file = st.file_uploader("Upload an image", label_visibility="visible")
 
 if uploaded_file is not None:
-    detect_and_draw(uploaded_file, sent_img_sz, detection_service)
+    detect_and_draw(uploaded_file, sent_img_sz, get_service(api_type))
