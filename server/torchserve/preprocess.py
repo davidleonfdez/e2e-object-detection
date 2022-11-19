@@ -37,7 +37,7 @@ def letterbox(img, new_shape=(640, 640), color=(114, 114, 114), auto=True, scale
     return img, ratio, (dw, dh)
 
 
-def preprocess_images(data):
+def preprocess_images(data, pad=False):
     """Extract and preprocess the input images from an incoming request `data`.
 
     Adapted from ts.handler.vision_handler
@@ -67,7 +67,7 @@ def preprocess_images(data):
             # if the image is a list
             image = np.array(image)
 
-        preprocessed_image, ratio, (dw, dh) = letterbox(image)#, self.img_size, stride=self.stride)[0]
+        preprocessed_image, ratio, (dw, dh) = letterbox(image, auto=not pad)
 
         orig_images.append(image)
         preprocessed_images.append(preprocessed_image)
