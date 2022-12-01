@@ -6,3 +6,5 @@ torch-model-archiver
 torchserve
 torchvision
 # torch==1.13.0+cpu
+# Temporary fix to TorchServe bug. It's not actually needed for our handlers.
+pyyaml
