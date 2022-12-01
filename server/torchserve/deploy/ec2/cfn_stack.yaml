@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create EC2 instance to host TorchServe and S3 bucket to store model (.mar) files
+
+#Metadata: arbitrary YAML
+
+Parameters:
+  InstanceTypeParameter:
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.  
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+  LatestAmiId:
+    Description: Public parameter store namespace of the desired AMI
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  SSHLocation:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+  ModelName:
+    Description: Name of the .mar model archive file
+    Type: String
+    Default: 'object_detector.mar'
+  UserDataParam:
+    Description: EC2 instance user data script
+    Type: String
+
+
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      # A name for the bucket. If you don't specify a name, AWS CloudFormation generates a unique ID and uses that ID 
+      # for the bucket name.
+      # If you specify a name, you can't perform updates that require replacement of this resource. You can perform 
+      # updates that require no or some interruption. If you need to replace the resource, specify a new name.
+      #BucketName: MY-BUCKET
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: An execution role for a Lambda function launched by CloudFormation
+      ManagedPolicyArns:
+        - !Ref LambdaPolicy
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action:
+          - 'sts:AssumeRole'
+
+  LambdaPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Managed policy for a Lambda function launched by CloudFormation
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ssm:SendCommand'
+            Resource: 
+              - !Sub 
+                - arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${documentName}
+                - documentName: !Ref CopyModelFromS3SSMDocument
+              - !Sub
+                - arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${instanceId}
+                - instanceId: !Ref EC2Instance
+
+  Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.9
+      Role: !GetAtt LambdaRole.Arn
+      # In seconds, default is 3 seconds
+      Timeout: 120
+      Environment:
+        Variables:
+          InstanceId: !Ref EC2Instance
+          DocumentName: !Ref CopyModelFromS3SSMDocument
+      Code:
+        ZipFile: |
+          import os
+          import boto3
+          ssm = boto3.client('ssm')
+
+          instance_id = os.environ.get('InstanceId')
+          document_name = os.environ.get('DocumentName')
+
+          def handler(event, context):
+            response = ssm.send_command(
+                InstanceIds=[instance_id],
+                DocumentName=document_name,
+            )
+
+            if response['ResponseMetadata']['HTTPStatusCode'] != 200:
+                raise Exception("Failed to send command")
+
+  S3NotifyLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt Lambda.Arn
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt S3Bucket.Arn
+
+  CopyModelFromS3SSMDocument: 
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: "Command"
+      DocumentFormat: "YAML"
+      TargetType: "/AWS::EC2::Instance"
+      Content:
+        schemaVersion: "2.2"
+        description: "Copy model file from S3 and restart TorchServe"
+        mainSteps:
+          - action: "aws:runShellScript"
+            name: "runShellScript"
+            inputs: 
+              runCommand:
+                - !Sub
+                  - "aws s3api get-object --bucket ${bucketName} --key ${objectName} /models/${objectName}"
+                  - bucketName: !Ref S3Bucket
+                    objectName: !Ref ModelName
+                - "sudo /usr/local/bin/torchserve --stop"
+                - "sudo /usr/local/bin/torchserve --model-store /models --models all --ncs --start &> /dev/null &"
+              workingDirectory: /
+              timeoutSeconds: "120"
+
+  EC2SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow access to TorchServe prediction endpoints and SSH traffic
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: TorchServe HTTP prediction port
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 127.0.0.1/32
+          Description: TorchServe HTTP management port
+        - IpProtocol: tcp
+          FromPort: 7070
+          ToPort: 7070
+          CidrIp: 0.0.0.0/0
+          Description: TorchServe gRPC prediction port
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+          Description: SSH port
+      # When you specify a VPC security group, Amazon EC2 creates a default egress rule that allows egress traffic on 
+      # all ports and IP protocols to any location. The default rule is removed only when you specify one or more 
+      # egress rules. If you want to remove the default rule, limit egress traffic to just the localhost 
+      # (127.0.0.1/32)
+      # SecurityGroupEgress: 
+
+  EC2IamRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ec2.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
+      Policies:
+        - PolicyName: ReadS3ModelInlinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 's3:GetObject'
+                Resource: !Join [',', [!GetAtt S3Bucket.Arn, '/*']]
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      Path: /
+      Roles: [!Ref EC2IamRole]
+
+  EC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      InstanceType: !Ref InstanceTypeParameter      
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroups:
+        - !Ref EC2SecurityGroup
+      PrivateDnsNameOptions:
+        EnableResourceNameDnsAAAARecord: false
+        EnableResourceNameDnsARecord: true
+        HostnameType: ip-name
+      BlockDeviceMappings:
+        # Root volume, the proper value depends on the AMI (for a HVM AMI it's either /dev/sda1 or /dev/xvda)
+        - DeviceName: /dev/xvda
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: false
+            VolumeSize: 20
+            VolumeType: gp2
+      UserData:
+        Fn::Base64: !Ref UserDataParam
+
+
+Outputs:
+  S3BucketName:
+    Description: "Object detection models bucket" 
+    Value: !Ref 'S3Bucket'
+  LambdaArn:
+    Description: "Arn of the lambda function that runs an SSM document that updates the model server"
+    Value: !GetAtt Lambda.Arn

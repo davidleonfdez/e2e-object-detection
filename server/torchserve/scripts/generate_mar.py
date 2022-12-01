@@ -1,6 +1,8 @@
 import argparse
 from enum import auto, Enum
+import os
 from pathlib import Path
+import shutil
 import subprocess
 
 
@@ -19,18 +21,29 @@ def _get_model_type(args):
 
 
 def _get_model_files(model_type):
+    root_ts_path = Path(__file__).parent.parent
     if model_type == ModelType.ONNX:
         return {
             'handler': 'yolo_onnx_handler.py',
             'req': 'yolo_onnx_handler_requirements.txt',
             'extra_files': ['preprocess.py', 'yolo_utils.py']
+            #'handler': str(root_ts_path/'yolo_onnx_handler.py'),
+            #'req': str(root_ts_path/'yolo_onnx_handler_requirements.txt'),
+            #'extra_files': [str(root_ts_path/p) for p in ['preprocess.py', 'yolo_utils.py']]
         }
     if model_type == ModelType.TORCHSCRIPT:
         return {
-            'handler': 'yolo_handler.py',
+            #'handler': 'yolo_handler.py',
             'req': 'yolo_handler_requirements.txt',
-            'extra_files': ['detect_ops.py', 'preprocess.py', 'yolo_utils.py']
+            'extra_files': ['detect_ops.py', 'preprocess.py', 'yolo_utils.py'],
+            'handler': str(root_ts_path/'yolo_handler.py'),
+            #'req': str(root_ts_path/'yolo_handler_requirements.txt'),
+            #'extra_files': [str(root_ts_path/p) for p in ['detect_ops.py', 'preprocess.py', 'yolo_utils.py']]
         }
+
+
+def _get_base_handlers_path():
+    return Path(__file__).resolve().parent.parent
 
 
 def build_command(args):
@@ -39,8 +52,9 @@ def build_command(args):
         raise ValueError('Unsupported serialized model type')
 
     model_files = _get_model_files(model_type)
-    base_path = Path(__file__).resolve().parent.parent
+    base_path = _get_base_handlers_path()
     extra_files = [str(base_path/fn) for fn in model_files['extra_files']]
+    
     cmd = [
         "torch-model-archiver", "-f", "--model-name", args.model_name, "--version", "1.0", 
         "--serialized-file",  args.model_path,  "--handler", model_files['handler'], 
@@ -63,6 +77,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     script_arr = build_command(args)
-    print(' '.join(script_arr))
+    print(' '.join([str(cmd_item) for cmd_item in script_arr]))
 
+    # We need to `cd` to be able to use relative paths. When we use absolute paths, and we copy the .mar
+    # file to a different machine, TorchServe gets confused looking for the requirements file at the
+    # exact path passed to torch-model-archiver
+    cwd = os.getcwd()
+    base_path = _get_base_handlers_path()
+    os.chdir(base_path)
     proc_out = subprocess.run(script_arr)
+    out_path = base_path/(args.model_name + '.mar')
+    shutil.move(str(out_path), cwd)
+    os.chdir(cwd)
