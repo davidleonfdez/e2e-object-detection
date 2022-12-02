@@ -8,11 +8,11 @@ Deploy to single EC2 instance
 
 To deploy for the first time:
 
-`python deploy.py <model-path(.pt or .onnx)>`
+`python deploy.py <model-path(.torchscript.pt or .onnx)>`
 
 To deploy an existing infrastructure and avoid creating a new stack, you must pass the name of the existing CloudFormation stack:
 
-`python deploy.py --stack-name <stack-name> <model-path(.pt or .onnx)>`
+`python deploy.py --stack-name <stack-name> <model-path(.torchscript.pt or .onnx)>`
 
 # Infrastructure details
 
