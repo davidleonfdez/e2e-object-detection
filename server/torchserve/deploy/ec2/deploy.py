@@ -9,15 +9,23 @@ import time
 
 
 TEMPLATE_FILENAME = 'cfn_stack.yaml'
+TEMPLATE_FILENAME_ASG = 'asg_stack.yaml'
 BUCKET_NAME_STACK_OUT = 'S3BucketName'
 LAMBDA_ARN_STACK_OUT = 'LambdaArn'
 CFN_UPDATE_IN_PROGRESS_STATUS = 'UPDATE_IN_PROGRESS'
 
+# If you edit this value, you should edit the same in asg_stack.yaml
+BUCKET_NAME_PLACEHOLDER_IN_USER_DATA = '__BUCKET_NAME__'
 
-def generate_user_data():
+
+def generate_user_data(model_name, include_s3_model_download:bool):
     out_path = Path(__file__).with_name('user_data_generated.sh')
     script_path = Path(__file__).with_name('generate_user_data.py')
-    cmd = f"python {script_path} --output-path {out_path}"
+    bucket_name_placeholder = BUCKET_NAME_PLACEHOLDER_IN_USER_DATA if include_s3_model_download else ''
+    cmd = (
+        f"python {script_path} --bucket-name {bucket_name_placeholder} --model-name {model_name} " 
+        + f"--output-path {out_path}"
+    )
 
     res = subprocess.run(cmd.split(), capture_output=True, text=True)
 
@@ -63,14 +71,15 @@ def wait_for_stack_update(client, stack_name):
     waiter.wait(StackName=stack_name)
 
 
-def deploy_stack(client, stack_name:str, test:bool, user_data:str):
+def deploy_stack(client, stack_name:str, test:bool, user_data:str, asg:bool):
     if not stack_name:
         stack_name = f'objdet-stack-{random.randint(1e6, 9_999_999)}'
         is_new_stack = True
     else:
         is_new_stack = not stack_exists(client, stack_name)
     
-    template_path = Path(__file__).resolve().with_name(TEMPLATE_FILENAME)
+    template_filename = TEMPLATE_FILENAME_ASG if asg else TEMPLATE_FILENAME
+    template_path = Path(__file__).resolve().with_name(template_filename)
     
     # boto3 cloudformation client doesn't have a deploy method, so we use CLI.
     # The boto3 alternative would be to:
@@ -148,11 +157,14 @@ def deploy(args):
     client = boto3.client('cloudformation')
 
     print('Generating UserData script...')
-    user_data = generate_user_data()
+    # For a single EC2 instance, the user data script doesn't need to include code to download
+    # the model from S3, as the copy will be triggered when we copy the model to S3 after the
+    # stack has been deployed.
+    user_data = generate_user_data(args.model_name, include_s3_model_download=args.asg)
     print('...Generated UserData script')
 
     print('Deploying CloudFormation stack...')
-    stack_name = deploy_stack(client, args.stack_name, args.test, user_data)
+    stack_name = deploy_stack(client, args.stack_name, args.test, user_data, args.asg)
     print(f'...Deployed CloudFormation stack {stack_name}')
 
     if not args.test:
@@ -192,6 +204,12 @@ if __name__ == '__main__':
             'Only test (not execute) the infrastructure changes. This option causes the creation of a CloudFormation '
             + 'changeset that you should delete or execute manually.'
         )
+    )
+    parser.add_argument(
+        '--asg', 
+        action='store_true', 
+        default=False, 
+        help='Deploy an EC2 autoscaling group fronted by a load balancer (ALB), instead of a single EC2 instance',
     )
     args = parser.parse_args()
 
