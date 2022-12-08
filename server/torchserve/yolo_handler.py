@@ -24,6 +24,7 @@ NUM_CLASSES = 1
 
 
 class YoloObjectDetector(BaseHandler):
+    "TorchServe object detection handler for a YOLO v7 model compiled with TorchScript"
     image_processing = transforms.Compose([transforms.ToTensor()])
     CONF_THRESH = 0.25
     IOU_THRESH = 0.65
@@ -39,13 +40,22 @@ class YoloObjectDetector(BaseHandler):
             Image.MAX_IMAGE_PIXELS = None
         self.detect_ops = IDetectOps()
             
-    # Adapted from VisionHandler
     def preprocess(self, data):
-        """The preprocess function of MNIST program converts the input data to a float tensor
+        """The preprocess function converts the data from a request to a float tensor.
+
+        The images are resized preserving the aspect ratio and then padded to meet the size expected by the model
+        `(self.IMG_SIZE, self.IMG_SIZE)`.
         Args:
-            data (List): Input data from the request is in the form of a Tensor
+            data (List): Input data, every item should be an image base64 encoded and/or as a bytearray or just a 
+              plain list.
         Returns:
-            list : The preprocess function returns the input image as a list of float tensors.
+            Tuple:
+            - torch.Tensor: float tensor of preprocessed images, ready to be passed as input to a YOLOv7 
+                PyTorch/TorchScript model. Shape: nchw.
+            - List[np.array]: original images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: preprocessed images with OpenCV dimension ordering. 
+                Item shape: hwc.
         """
         t1 = time.time()
         orig_images, preprocessed_images = preprocess_images(data)
@@ -57,12 +67,25 @@ class YoloObjectDetector(BaseHandler):
     def inference(self, data, *args, **kwargs):
         """
         The Inference Function is used to make a prediction call on the given input request.
-        The user needs to override the inference function to customize it.
+
+        The second and third components of `data` are just returned as they are (forwarded to the `postprocess` 
+          method).
         Args:
-            data (Torch Tensor): A Torch Tensor is passed to make the Inference Request.
-            The shape should match the model input shape.
+            data (Tuple): same as the output of `preprocess` method.
+            - torch.Tensor: float tensor of preprocessed input images, ready to be passed as input to a YOLOv7 
+                PyTorch/TorchScript model. Shape: nchw.
+            - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
         Returns:
-            Torch Tensor : The Predicted Torch Tensor is returned in this function.
+            Tuple:
+            - torch.Tensor: float tensor of predictions. Shape: [number of grids, n, c, grid height, grid width, 6]
+              Last dimension contains (x1,y1,x2,y2,confidence,class).
+            - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
         """
         t1 = time.time()
         tensors, orig_images, preprocessed_images = data
@@ -71,6 +94,29 @@ class YoloObjectDetector(BaseHandler):
         return preds, orig_images, preprocessed_images
 
     def postprocess(self, data):
+        """Transform the output of the detection layers of YOLOv7 into a list of bounding boxes and confidence scores.
+
+        The detection boxes are filtered using non maximum supression (NMS), with `self.IOU_THRESH` being the 
+        intersection over union threshold employed to discard the boxes whose IOU with the candidate box (of a given
+        NMS iteration) exceeds that value.
+        Any predicted box with a confidence score lower than `self.CONF_THRESH` is also discarded.
+        Args:
+            data (Tuple): same as the output of `inference` method.
+            - torch.Tensor: float tensor of predictions. Shape: [number of grids, n, c, grid height, grid width, 6]
+              Last dimension contains (x1,y1,x2,y2,confidence,class).
+            - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+
+        Returns:
+            List[List[dict]]: number of images x number of detections. Every dict contains the keys:
+            - 'coords': bounding box of the detection, represented by an array of length 4 (x1, y1, x2, y2).
+              (x1, y1) -> Upper left corner.
+              (x2, y2) -> Bottom right corner.
+              (0, 0) is the upper left corner of the image.
+            - 'conf': confidence score
+        """
         t1 = time.time()
         preds, orig_images, preprocessed_images = data
         preds = self.detect_ops(preds)

@@ -22,6 +22,7 @@ NUM_CLASSES = 1
 
 
 class YoloONNXObjectDetector(BaseHandler):
+    "TorchServe object detection handler for a YOLO v7 model with ONNX format and NMS included"
     CONF_THRESH = 0.25
     IOU_THRESH = 0.65
     IMG_SIZE = 640
@@ -33,14 +34,23 @@ class YoloONNXObjectDetector(BaseHandler):
         properties = context.system_properties
         if not properties.get("limit_max_image_pixels"):
             Image.MAX_IMAGE_PIXELS = None
-            
-    # Adapted from VisionHandler
+
     def preprocess(self, data):
-        """The preprocess function of MNIST program converts the input data to a float tensor
+        """The preprocess function converts the data from a request to a NumPy array.
+
+        The images are resized preserving the aspect ratio and then padded to meet the size expected by the model
+        `(self.IMG_SIZE, self.IMG_SIZE)`.
         Args:
-            data (List): Input data from the request is in the form of a Tensor
+            data (List): Input data, every item should be an image base64 encoded and/or as a bytearray or just a 
+              plain list.
         Returns:
-            list : The preprocess function returns the input image as a list of float tensors.
+            Tuple:
+            - np.array: float array of preprocessed images, ready to be passed as input to a YOLOv7 ONNX model. 
+              Shape: nchw.
+            - List[np.array]: original images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: preprocessed images with OpenCV dimension ordering. 
+                Item shape: hwc.
         """
         t1 = time.time()
         orig_images, preprocessed_images = preprocess_images(data, pad=True)
@@ -52,12 +62,27 @@ class YoloONNXObjectDetector(BaseHandler):
     def inference(self, data, *args, **kwargs):
         """
         The Inference Function is used to make a prediction call on the given input request.
-        The user needs to override the inference function to customize it.
+
+        The second and third components of `data` are just returned as they are (forwarded to the `postprocess` 
+          method).
+        This method assumes that a NMS layer is part of the ONNX model.
+
         Args:
-            data (Torch Tensor): A Torch Tensor is passed to make the Inference Request.
-            The shape should match the model input shape.
+            data (Tuple): same as the output of `preprocess` method.
+            - np.array: float array of preprocessed input images, ready to be passed as input to a YOLOv7 ONNX model. 
+              Shape: nchw.
+            - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
         Returns:
-            Torch Tensor : The Predicted Torch Tensor is returned in this function.
+            [Tuple]:
+            - List[np.array]: float arrays of predictions (one entry per image). Shape: n x [number of detections, 7]
+              Last dimension contains (0,x1,y1,x2,y2,class,confidence).
+            - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
         """
         t1 = time.time()
         arrays, orig_images, preprocessed_images = data
@@ -69,6 +94,28 @@ class YoloONNXObjectDetector(BaseHandler):
         return preds, orig_images, preprocessed_images
 
     def postprocess(self, data):
+        """
+        Transform the output of the detection+NMS layers of YOLOv7 into a list of bounding boxes and confidence scores.
+
+        This method assumes that a NMS layer with IOU threshold `self.IOU_THRESH` is part of the ONNX model.
+        Any predicted box with a confidence score lower than `self.CONF_THRESH` is also discarded.
+        Args:
+            data (Tuple): same as the output of `inference` method.
+            - List[np.array]: float arrays of predictions (one entry per image). Shape: n x [number of detections, 7]
+              Last dimension contains (0,x1,y1,x2,y2,class,confidence).
+            - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+            - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
+                Item shape: hwc.
+
+        Returns:
+            List[List[dict]]: number of images x number of detections. Every dict contains the keys:
+            - 'coords': bounding box of the detection, represented by an array of length 4 (x1, y1, x2, y2).
+              (x1, y1) -> Upper left corner.
+              (x2, y2) -> Bottom right corner.
+              (0, 0) is the upper left corner of the image.
+            - 'conf': confidence score
+        """
         t1 = time.time()
         preds, orig_images, preprocessed_images = data
 
@@ -77,7 +124,8 @@ class YoloONNXObjectDetector(BaseHandler):
         # We don't apply NMS because it's already embedded in the ONNX model exported by YOLOv7 export script
 
         # Process detections
-        for i, (det, orig_img, preprocessed_image) in enumerate(zip(preds, orig_images, preprocessed_images)):  # detections per image
+        # `det = preds[i]` -> detections in image `i`
+        for i, (det, orig_img, preprocessed_image) in enumerate(zip(preds, orig_images, preprocessed_images)): 
             if len(det):
                 det = torch.tensor(det)
                 # Rescale boxes from img_size to orig_img size
