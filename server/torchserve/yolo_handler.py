@@ -132,7 +132,7 @@ class YoloObjectDetector(BaseHandler):
                 det[:, :4] = scale_coords(preprocessed_image.shape, det[:, :4], orig_img.shape).round()
                 result_cur_img = [
                     {'coords': np_det[:4], 'conf': np_det[CONFIDENCE_IDX]} 
-                    for np_det in reversed(det.tolist())
+                    for np_det in det.tolist()
                 ]
             else:
                 result_cur_img = []

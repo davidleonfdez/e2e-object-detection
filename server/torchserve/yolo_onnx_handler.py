@@ -23,6 +23,8 @@ NUM_CLASSES = 1
 
 class YoloONNXObjectDetector(BaseHandler):
     "TorchServe object detection handler for a YOLO v7 model with ONNX format and NMS included"
+    # These thresholds are just informative. The actual thresholds are embedded inside the ONNX model
+    # and depend only on the parameters passed to the YOLO v7 export.py script.
     CONF_THRESH = 0.25
     IOU_THRESH = 0.65
     IMG_SIZE = 640
@@ -132,7 +134,7 @@ class YoloONNXObjectDetector(BaseHandler):
                 det[:, 1:5] = scale_coords(preprocessed_image.shape, det[:, 1:5], orig_img.shape).round()
                 result_cur_img = [
                     {'coords': np_det[1:5], 'conf': np_det[CONFIDENCE_IDX]} 
-                    for np_det in reversed(det.tolist())
+                    for np_det in det.tolist()
                 ]
             else:
                 result_cur_img = []
