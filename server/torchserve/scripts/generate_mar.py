@@ -60,7 +60,25 @@ def build_command(args):
         "--serialized-file",  args.model_path,  "--handler", model_files['handler'], 
         "--requirements-file", model_files['req'], "--extra-files", ','.join(extra_files)
     ]
+    if len(args.out_path.strip()) > 0:
+        cmd.extend(["--export-path", args.out_path])
     return cmd
+
+
+def exec_command(script_arr, args):
+    # We need to `cd` to be able to use relative paths. When we use absolute paths, and we copy the .mar
+    # file to a different machine, TorchServe gets confused looking for the requirements file at the
+    # exact path passed to torch-model-archiver
+    cwd = os.getcwd()
+    base_path = _get_base_handlers_path()
+    os.chdir(base_path)
+    proc_out = subprocess.run(script_arr)
+    output_is_cwd = len(args.out_path.strip()) == 0
+    if output_is_cwd:
+        out_path = str(base_path/(args.model_name + '.mar'))
+        shutil.copy2(out_path, cwd)
+        os.remove(out_path)
+    os.chdir(cwd)
 
 
 if __name__ == '__main__':
@@ -74,19 +92,15 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model-name', type=str, default='object_detector', help='Name of the output model .mar file',
     )
+    parser.add_argument(
+        '--out-path', 
+        type=str, 
+        default='', 
+        help='Path where the exported .mar file will be saved. If --export-path is not specified, the file will be saved in the current working directory.',
+    )
     args = parser.parse_args()
 
     script_arr = build_command(args)
     print(' '.join([str(cmd_item) for cmd_item in script_arr]))
 
-    # We need to `cd` to be able to use relative paths. When we use absolute paths, and we copy the .mar
-    # file to a different machine, TorchServe gets confused looking for the requirements file at the
-    # exact path passed to torch-model-archiver
-    cwd = os.getcwd()
-    base_path = _get_base_handlers_path()
-    os.chdir(base_path)
-    proc_out = subprocess.run(script_arr)
-    out_path = str(base_path/(args.model_name + '.mar'))
-    shutil.copy2(out_path, cwd)
-    os.remove(out_path)
-    os.chdir(cwd)
+    exec_command(script_arr, args)
