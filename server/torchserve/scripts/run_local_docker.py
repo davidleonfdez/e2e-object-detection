@@ -39,6 +39,8 @@ def run_with_docker_py(model_store_path):
         ports={p:p for p in PORTS},
         remove=True,
         detach=True,
+        stdin_open=True,
+        tty=True,
     )
     return container
 
