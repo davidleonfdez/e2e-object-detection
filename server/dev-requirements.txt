@@ -1,6 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 boto3
 captum
+docker
 pytest
 torch
 torch-model-archiver
