@@ -1,0 +1,475 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  ImageName:
+    Description: ECR image name
+    Type: String
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+  LatestAmiId:
+    Description: AMI ID
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id
+  SSHLocation:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.0.0/24
+      AvailabilityZone: 
+        !Select
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+      MapPublicIpOnLaunch: true
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.1.0/24
+      AvailabilityZone: 
+        !Select
+          - 1
+          - Fn::GetAZs: !Ref AWS::Region
+      MapPublicIpOnLaunch: true
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+
+  ECSSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: TorchServe HTTP prediction port
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 127.0.0.1/32
+          Description: TorchServe HTTP management port
+        # - IpProtocol: tcp
+        #   FromPort: 7070
+        #   ToPort: 7070
+        #   CidrIp: 0.0.0.0/0
+        #   Description: TorchServe gRPC prediction port
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+          Description: SSH port
+
+  CloudwatchLogsGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Join 
+        - '-'
+        - - ECSLogGroup
+          - !Ref 'AWS::StackName'
+      RetentionInDays: 14
+
+  Taskdefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      ContainerDefinitions:
+        - Name: objdet
+          # This is a minimum
+          MemoryReservation: 512
+          Image: !Ref ImageName
+          Interactive: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: ecs-objdet
+          PortMappings:
+            - ContainerPort: 8080
+              HostPort: 8080
+            # - ContainerPort: 7070
+            #   HostPort: 7070
+            #   AppProtocol: grpc #| http | http2
+          PseudoTerminal: true
+
+  ELBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access to TorchServe prediction endpoints
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: TorchServe HTTP prediction port
+        # - IpProtocol: tcp
+        #   FromPort: 7070
+        #   ToPort: 7070
+        #   CidrIp: 0.0.0.0/0
+        #   Description: TorchServe gRPC prediction port
+
+  ELB:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      # To specify an Elastic IP address, specify SubnetMappings instead of Subnets.
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        #- !Ref ELBSecurityGroup
+        - !GetAtt ELBSecurityGroup.GroupId
+
+  # GRPCTargetGroup:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     Port: 7070
+  #     Protocol: HTTP
+  #     ProtocolVersion: GRPC
+  #     TargetType: instance
+  #     VpcId: !Ref VPC
+
+  HTTPTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 8080
+      Protocol: HTTP
+      # For Fargate it needs to be ip
+      TargetType: instance
+      VpcId: !Ref VPC
+
+  # It looks like there's only support for HTTPS when the target group has ProtocolVersion==gRPC
+  # GRPCListener:
+  #   Type: AWS::ElasticLoadBalancingV2::Listener
+  #   Properties:
+  #     DefaultActions:
+  #       - Type: "forward"
+  #         TargetGroupArn: !Ref GRPCTargetGroup
+  #     LoadBalancerArn: !Ref ELB
+  #     Port: 7070
+  #     Protocol: "HTTP"
+
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref HTTPTargetGroup
+      LoadBalancerArn: !Ref ELB
+      Port: 8080
+      Protocol: "HTTP"
+
+  ECSAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      MinSize: '1'
+      MaxSize: '4'
+      DesiredCapacity: '1'
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+    DependsOn: IGWAttachment
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile: 
+          Arn: !GetAtt EC2InstanceProfile.Arn
+        SecurityGroupIds:
+          - !GetAtt ECSSecurityGroup.GroupId
+        # BlockDeviceMappings:
+        #   # Default root volume of ECS-optimized AMI has 30gb EBS
+        UserData: !Base64 
+          'Fn::Join':
+            - ''
+            - - |
+                #!/bin/bash -xe
+              - echo ECS_CLUSTER=
+              - !Ref ECSCluster
+              - |2
+                >> /etc/ecs/ecs.config
+              - |
+                yum install -y aws-cfn-bootstrap
+              - '/opt/aws/bin/cfn-signal -e $? '
+              - '         --stack '
+              - !Ref 'AWS::StackName'
+              - '         --resource ECSAutoScalingGroup '
+              - '         --region '
+              - !Ref 'AWS::Region'
+              - |+
+
+  ECSService:
+    Type: 'AWS::ECS::Service'
+    DependsOn: HTTPListener
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: '1'
+      LoadBalancers:
+        - ContainerName: objdet
+          ContainerPort: '8080'
+          TargetGroupArn: !Ref HTTPTargetGroup
+        # - ContainerName: objdet
+        #   ContainerPort: '7070'
+        #   TargetGroupArn: !Ref GRPCTargetGroup
+      Role: !Ref ECSServiceRole
+      TaskDefinition: !Ref Taskdefinition
+
+  ServiceScalingTarget:
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    DependsOn: ECSService
+    Properties:
+      MaxCapacity: 4
+      MinCapacity: 1
+      ResourceId: !Join 
+        - ''
+        - - service/
+          - !Ref ECSCluster
+          - /
+          - !GetAtt 
+            - ECSService
+            - Name
+      RoleARN: !GetAtt 
+        - AutoscalingRole
+        - Arn
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: ecs
+
+  ServiceScaleOutPolicy:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: ECSScaleOutStepPolicy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ServiceScalingTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 1
+
+  ServiceScaleInPolicy:
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: ECSScaleInStepPolicy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ServiceScalingTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -1
+
+  CPUAlarmHigh:
+     Type: AWS::CloudWatch::Alarm
+     Properties:
+        AlarmDescription: Scale-up if CPU > 80% for 10 minutes
+        MetricName: CPUUtilization
+        Namespace: AWS/ECS
+        Statistic: Average
+        # Don't set below 300, the metric CPUUtilization can only have a datapoint every five minutes.
+        Period: '300'
+        EvaluationPeriods: '2'
+        Threshold: '80'
+        AlarmActions: [ !Ref ServiceScaleOutPolicy ]
+        Dimensions:
+          - Name: ClusterName
+            Value: !Ref ECSCluster
+          - Name: ServiceName
+            Value: !GetAtt ECSService.Name
+        ComparisonOperator: GreaterThanThreshold
+
+  CPUAlarmLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scale-down if CPU < 50% for 10 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '2'
+      Threshold: '50'
+      AlarmActions: [ !Ref ServiceScaleInPolicy ]
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ECSService.Name
+      ComparisonOperator: LessThanThreshold
+
+  ECSCapacityProvider:
+    Type: AWS::ECS::CapacityProvider
+    Properties:
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref ECSAutoScalingGroup
+        ManagedScaling: 
+          Status: ENABLED
+          TargetCapacity: 100
+
+  ClusterCapacityProviderAssociation:
+    Type: "AWS::ECS::ClusterCapacityProviderAssociations"
+    Properties:
+      Cluster: !Ref ECSCluster
+      CapacityProviders: [!Ref ECSCapacityProvider]
+      DefaultCapacityProviderStrategy:
+        - Base: 1
+          # Weight is relative, now it doesn't mind bc there's only one provider
+          Weight: 1
+          CapacityProvider: !Ref ECSCapacityProvider
+
+  ECSServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+                  - 'elasticloadbalancing:DeregisterTargets'
+                  - 'elasticloadbalancing:Describe*'
+                  - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+                  - 'elasticloadbalancing:RegisterTargets'
+                  - 'ec2:Describe*'
+                  - 'ec2:AuthorizeSecurityGroupIngress'
+                Resource: '*'
+
+  EC2Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DeregisterContainerInstance'
+                  - 'ecs:DiscoverPollEndpoint'
+                  - 'ecs:Poll'
+                  - 'ecs:RegisterContainerInstance'
+                  - 'ecs:StartTelemetrySession'
+                  - 'ecs:Submit*'
+                  - 'ecs:UpdateContainerInstancesState'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:BatchGetImage'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ec2:DescribeTags'
+                Resource: '*'
+
+  AutoscalingRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - application-autoscaling.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: service-autoscaling
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'application-autoscaling:*'
+                  - 'cloudwatch:DescribeAlarms'
+                  - 'cloudwatch:PutMetricAlarm'
+                  - 'ecs:DescribeServices'
+                  - 'ecs:UpdateService'
+                Resource: '*'
+
+  EC2InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EC2Role
