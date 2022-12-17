@@ -194,6 +194,11 @@ Resources:
       # For Fargate it needs to be ip
       TargetType: instance
       VpcId: !Ref VPC
+      HealthCheckPath: "/ping"
+      HealthCheckPort: "traffic-port"
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: 200
 
   # It looks like there's only support for HTTPS when the target group has ProtocolVersion==gRPC
   # GRPCListener:

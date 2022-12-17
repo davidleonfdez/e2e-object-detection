@@ -315,7 +315,7 @@ Resources:
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
       TargetGroupARNs:
-        - !Ref GRPCTargetGroup
+        #- !Ref GRPCTargetGroup
         - !Ref HTTPTargetGroup
     DependsOn: IGWAttachment
 
@@ -343,9 +343,9 @@ Resources:
         Namespace: AWS/EC2
         Statistic: Average
         # Don't set below 300, the metric CPUUtilization can only have a datapoint every five minutes.
-        Period: '300' #'300'
-        EvaluationPeriods: '1' #'2'
-        Threshold: '1' #'70'
+        Period: '300'
+        EvaluationPeriods: '2'
+        Threshold: '70'
         AlarmActions: [ !Ref ScaleUpPolicy ]
         Dimensions:
           - Name: AutoScalingGroupName
@@ -362,7 +362,7 @@ Resources:
       # Don't set below 300, the metric CPUUtilization can only have a datapoint every five minutes.
       Period: '300'
       EvaluationPeriods: '2'
-      Threshold: '1' #'50'
+      Threshold: '50'
       AlarmActions: [ !Ref ScaleDownPolicy ]
       Dimensions:
         - Name: AutoScalingGroupName
@@ -380,25 +380,20 @@ Resources:
           ToPort: 8080
           CidrIp: 0.0.0.0/0
           Description: TorchServe HTTP prediction port
-        # - IpProtocol: tcp
-        #   FromPort: 8081
-        #   ToPort: 8081
-        #   CidrIp: 127.0.0.1/32 # probably nonsense and should allow from private IPs or sth
-        #   Description: TorchServe HTTP management port
         - IpProtocol: tcp
           FromPort: 7070
           ToPort: 7070
           CidrIp: 0.0.0.0/0
           Description: TorchServe gRPC prediction port
 
-  GRPCTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Port: 7070
-      Protocol: HTTP
-      ProtocolVersion: GRPC
-      TargetType: instance
-      VpcId: !Ref VPC
+  # GRPCTargetGroup:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     Port: 7070
+  #     Protocol: HTTP
+  #     ProtocolVersion: GRPC
+  #     TargetType: instance
+  #     VpcId: !Ref VPC
 
   HTTPTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -407,6 +402,11 @@ Resources:
       Protocol: HTTP
       TargetType: instance
       VpcId: !Ref VPC
+      HealthCheckPath: "/ping"
+      HealthCheckPort: "traffic-port"
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: 200
 
   # It looks like there's only support for HTTPS when the target group has ProtocolVersion==gRPC
   # GRPCListener:
@@ -431,7 +431,7 @@ Resources:
 
   ELB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties: 
+    Properties:
       SecurityGroups: 
         - !GetAtt ELBSecurityGroup.GroupId
       IpAddressType: ipv4
