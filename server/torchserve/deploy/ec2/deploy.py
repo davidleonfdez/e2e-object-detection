@@ -71,7 +71,7 @@ def wait_for_stack_update(client, stack_name):
     waiter.wait(StackName=stack_name)
 
 
-def deploy_stack(client, stack_name:str, test:bool, user_data:str, asg:bool):
+def deploy_stack(client, stack_name:str, test:bool, user_data:str, asg:bool, instance_type:str):
     if not stack_name:
         stack_name = f'objdet-stack-{random.randint(1e6, 9_999_999)}'
         is_new_stack = True
@@ -90,7 +90,7 @@ def deploy_stack(client, stack_name:str, test:bool, user_data:str, asg:bool):
     cmd = [
         "aws", "cloudformation", "deploy", "--template-file", str(template_path), "--stack-name", stack_name,
         "--capabilities", "CAPABILITY_IAM", "--parameter-overrides", f"UserDataParam={user_data}",
-        "--no-fail-on-empty-changeset"
+        f"InstanceTypeParameter={instance_type}", "--no-fail-on-empty-changeset"
     ]
     
     if test:
@@ -164,7 +164,7 @@ def deploy(args):
     print('...Generated UserData script')
 
     print('Deploying CloudFormation stack...')
-    stack_name = deploy_stack(client, args.stack_name, args.test, user_data, args.asg)
+    stack_name = deploy_stack(client, args.stack_name, args.test, user_data, args.asg, args.instance_type)
     print(f'...Deployed CloudFormation stack {stack_name}')
 
     if not args.test:
@@ -210,6 +210,9 @@ if __name__ == '__main__':
         action='store_true', 
         default=False, 
         help='Deploy an EC2 autoscaling group fronted by a load balancer (ALB), instead of a single EC2 instance',
+    )
+    parser.add_argument(
+        '--instance-type', type=str, default='t2.micro', help='EC2 instance type',
     )
     args = parser.parse_args()
 

@@ -134,7 +134,7 @@ def wait_for_stack_update(client, stack_name):
     waiter.wait(StackName=stack_name)
 
 
-def deploy_stack(client, stack_name:str, ecr_image_name:str):
+def deploy_stack(client, stack_name:str, ecr_image_name:str, instance_type:str):
     if not stack_name:
         stack_name = f'objdet-ecs-stack-{random.randint(1e6, 9_999_999)}'
         is_new_stack = True
@@ -152,7 +152,7 @@ def deploy_stack(client, stack_name:str, ecr_image_name:str):
     cmd = [
         "aws", "cloudformation", "deploy", "--template-file", str(template_path), "--stack-name", stack_name,
         "--capabilities", "CAPABILITY_IAM",  "--parameter-overrides", f"ImageName={ecr_image_name}",
-        "--no-fail-on-empty-changeset"
+        f"InstanceType={instance_type}", "--no-fail-on-empty-changeset"
     ]
 
     subprocess.run(cmd)
@@ -195,7 +195,8 @@ def deploy(args):
     stack_name = deploy_stack(
         aws_client.get('cloudformation'), 
         args.stack_name, 
-        get_ecr_image_name(aws_client, args.image_name)
+        get_ecr_image_name(aws_client, args.image_name),
+        args.instance_type
     )
     print(f'...Deployed CloudFormation stack {stack_name}')
 
@@ -215,6 +216,9 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--image-name', type=str, default='objdet-server', help='Name of the Docker image (repository) deployed to ECR',
+    )
+    parser.add_argument(
+        '--instance-type', type=str, default='t2.micro', help='EC2 instance type',
     )
     args = parser.parse_args()
 

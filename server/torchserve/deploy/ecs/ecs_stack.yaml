@@ -4,12 +4,16 @@ Parameters:
     Description: ECR image name
     Type: String
   InstanceType:
-    Description: EC2 instance type
+    Description: EC2 instance type. Default is t2.micro.
     Type: String
     Default: t2.micro
     AllowedValues:
       - t2.micro
+      - t3.small
+      - t3a.medium
       - m1.small
+      - m6a.large
+      - c6i.large
       - m1.large
   LatestAmiId:
     Description: AMI ID
@@ -176,6 +180,7 @@ Resources:
       SecurityGroups:
         #- !Ref ELBSecurityGroup
         - !GetAtt ELBSecurityGroup.GroupId
+    DependsOn: InternetGateway
 
   # GRPCTargetGroup:
   #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
