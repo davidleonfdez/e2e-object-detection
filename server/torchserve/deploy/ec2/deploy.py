@@ -6,13 +6,14 @@ from pathlib import Path
 import random
 import subprocess
 import time
+from torchserve.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
+#from deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
 
 
 TEMPLATE_FILENAME = 'cfn_stack.yaml'
 TEMPLATE_FILENAME_ASG = 'asg_stack.yaml'
 BUCKET_NAME_STACK_OUT = 'S3BucketName'
 LAMBDA_ARN_STACK_OUT = 'LambdaArn'
-CFN_UPDATE_IN_PROGRESS_STATUS = 'UPDATE_IN_PROGRESS'
 
 # If you edit this value, you should edit the same in asg_stack.yaml
 BUCKET_NAME_PLACEHOLDER_IN_USER_DATA = '__BUCKET_NAME__'
@@ -32,43 +33,6 @@ def generate_user_data(model_name, include_s3_model_download:bool):
     with open(out_path) as f:
         user_data = f.read()
     return user_data
-
-
-def stack_exists(client, stack_name:str):
-    try:
-        data = client.describe_stacks(StackName=stack_name)
-    except ClientError:
-        return False
-    return True
-
-
-def create_stack(client, stack_name):
-    if not stack_name:
-        stack_name = f'objdet-stack-{random.randint(1e6, 9_999_999)}'
-
-    client.create_stack(StackName=stack_name)
-
-    return stack_name
-
-
-def update_stack(client, stack_name):
-    client.update_stack(StackName=stack_name)
-
-
-def wait_for_stack_creation(client, stack_name):
-    waiter = client.get_waiter('stack_create_complete')
-    waiter.wait(StackName=stack_name)
-
-
-def wait_for_stack_update(client, stack_name):
-    # Avoid waiting when an update is not in place; for instance, when CLI `deploy` 
-    # produced an empty changset. Without this check, we could get blocked.
-    status = client.describe_stacks(StackName=stack_name)['Stacks'][0]['StackStatus']
-    if status != CFN_UPDATE_IN_PROGRESS_STATUS:
-        return
-    # If status changes between these two sentences we could get blocked anyway but it's highly unlikely
-    waiter = client.get_waiter('stack_update_complete')
-    waiter.wait(StackName=stack_name)
 
 
 def deploy_stack(client, stack_name:str, test:bool, user_data:str, asg:bool, instance_type:str):

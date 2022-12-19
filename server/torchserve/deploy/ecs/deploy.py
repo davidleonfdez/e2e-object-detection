@@ -9,9 +9,10 @@ import random
 import shutil
 import subprocess
 import time
+from torchserve.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
+#from deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
 
 
-CFN_UPDATE_IN_PROGRESS_STATUS = 'UPDATE_IN_PROGRESS'
 TEMPLATE_FILENAME = 'ecs_stack.yaml'
 
 
@@ -108,30 +109,6 @@ def tag_image_for_ecr(aws_client:AWSClientManager, docker_client:docker.DockerCl
 
     docker_client.api.tag(image_name, target_image_name)
     docker_client.images.push(target_image_name)
-
-
-def stack_exists(client, stack_name:str):
-    try:
-        data = client.describe_stacks(StackName=stack_name)
-    except ClientError:
-        return False
-    return True
-
-
-def wait_for_stack_creation(client, stack_name):
-    waiter = client.get_waiter('stack_create_complete')
-    waiter.wait(StackName=stack_name)
-
-
-def wait_for_stack_update(client, stack_name):
-    # Avoid waiting when an update is not in place; for instance, when CLI `deploy` 
-    # produced an empty changset. Without this check, we could get blocked.
-    status = client.describe_stacks(StackName=stack_name)['Stacks'][0]['StackStatus']
-    if status != CFN_UPDATE_IN_PROGRESS_STATUS:
-        return
-    # If status changes between these two sentences we could get blocked anyway but it's highly unlikely
-    waiter = client.get_waiter('stack_update_complete')
-    waiter.wait(StackName=stack_name)
 
 
 def deploy_stack(client, stack_name:str, ecr_image_name:str, instance_type:str):
