@@ -9,8 +9,7 @@ import random
 import shutil
 import subprocess
 import time
-from torchserve.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
-#from deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
+from objdetserver.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
 
 
 TEMPLATE_FILENAME = 'ecs_stack.yaml'

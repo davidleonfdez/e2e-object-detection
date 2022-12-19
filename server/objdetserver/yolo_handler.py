@@ -1,33 +1,35 @@
 from captum.attr import IntegratedGradients
 from PIL import Image
-import numpy as np
 import time
 import torch
+from torchvision import transforms
 from ts.torch_handler.base_handler import BaseHandler
 
 
 # Make aux files imports work for both tests and TorchServe
-is_test = "torchserve." in __name__
+is_test = "objdetserver." in __name__
 if is_test:
+    from .detect_ops import IDetectOps
     from .preprocess import preprocess_images
-    from .yolo_utils import scale_coords
+    from .yolo_utils import non_max_suppression, scale_coords
 else:
     # Inside TorchServe server
+    from detect_ops import IDetectOps
     from preprocess import preprocess_images
-    from yolo_utils import scale_coords
+    from yolo_utils import non_max_suppression, scale_coords
 
 
-CONFIDENCE_IDX = 6
+CONFIDENCE_IDX = 4
 NUM_CLASSES = 1
 
 
-class YoloONNXObjectDetector(BaseHandler):
-    "TorchServe object detection handler for a YOLO v7 model with ONNX format and NMS included"
-    # These thresholds are just informative. The actual thresholds are embedded inside the ONNX model
-    # and depend only on the parameters passed to the YOLO v7 export.py script.
+class YoloObjectDetector(BaseHandler):
+    "TorchServe object detection handler for a YOLO v7 model compiled with TorchScript"
+    image_processing = transforms.Compose([transforms.ToTensor()])
     CONF_THRESH = 0.25
     IOU_THRESH = 0.65
     IMG_SIZE = 640
+    detect_ops = IDetectOps()
     
     def initialize(self, context):
         super().initialize(context)
@@ -36,9 +38,10 @@ class YoloONNXObjectDetector(BaseHandler):
         properties = context.system_properties
         if not properties.get("limit_max_image_pixels"):
             Image.MAX_IMAGE_PIXELS = None
-
+        self.detect_ops = IDetectOps()
+            
     def preprocess(self, data):
-        """The preprocess function converts the data from a request to a NumPy array.
+        """The preprocess function converts the data from a request to a float tensor.
 
         The images are resized preserving the aspect ratio and then padded to meet the size expected by the model
         `(self.IMG_SIZE, self.IMG_SIZE)`.
@@ -47,19 +50,19 @@ class YoloONNXObjectDetector(BaseHandler):
               plain list.
         Returns:
             Tuple:
-            - np.array: float array of preprocessed images, ready to be passed as input to a YOLOv7 ONNX model. 
-              Shape: nchw.
+            - torch.Tensor: float tensor of preprocessed images, ready to be passed as input to a YOLOv7 
+                PyTorch/TorchScript model. Shape: nchw.
             - List[np.array]: original images before preprocessing with OpenCV dimension ordering. 
                 Item shape: hwc.
             - List[np.array]: preprocessed images with OpenCV dimension ordering. 
                 Item shape: hwc.
         """
         t1 = time.time()
-        orig_images, preprocessed_images = preprocess_images(data, pad=True)
-        model_inputs = (np.stack(preprocessed_images).astype(np.float32) / 255).transpose(0, 3, 1, 2)
+        orig_images, preprocessed_images = preprocess_images(data)
+        tensors = torch.stack([self.image_processing(prepro_img) for prepro_img in preprocessed_images])
         print('preprocess time = ', time.time() - t1)
 
-        return model_inputs, orig_images, preprocessed_images
+        return tensors.to(self.device), orig_images, preprocessed_images
     
     def inference(self, data, *args, **kwargs):
         """
@@ -67,44 +70,40 @@ class YoloONNXObjectDetector(BaseHandler):
 
         The second and third components of `data` are just returned as they are (forwarded to the `postprocess` 
           method).
-        This method assumes that a NMS layer is part of the ONNX model.
-
         Args:
             data (Tuple): same as the output of `preprocess` method.
-            - np.array: float array of preprocessed input images, ready to be passed as input to a YOLOv7 ONNX model. 
-              Shape: nchw.
+            - torch.Tensor: float tensor of preprocessed input images, ready to be passed as input to a YOLOv7 
+                PyTorch/TorchScript model. Shape: nchw.
             - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
                 Item shape: hwc.
             - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
                 Item shape: hwc.
         Returns:
-            [Tuple]:
-            - List[np.array]: float arrays of predictions (one entry per image). Shape: n x [number of detections, 7]
-              Last dimension contains (0,x1,y1,x2,y2,class,confidence).
+            Tuple:
+            - torch.Tensor: float tensor of predictions. Shape: [number of grids, n, c, grid height, grid width, 6]
+              Last dimension contains (x1,y1,x2,y2,confidence,class).
             - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
                 Item shape: hwc.
             - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
                 Item shape: hwc.
         """
         t1 = time.time()
-        arrays, orig_images, preprocessed_images = data
-
-        ort_inputs = {self.model.get_inputs()[0].name: arrays}
-        preds = self.model.run(None, ort_inputs)
+        tensors, orig_images, preprocessed_images = data
+        preds = super().inference(tensors, *args, **kwargs)
         print('Inference time: ', time.time() - t1)
-
         return preds, orig_images, preprocessed_images
 
     def postprocess(self, data):
-        """
-        Transform the output of the detection+NMS layers of YOLOv7 into a list of bounding boxes and confidence scores.
+        """Transform the output of the detection layers of YOLOv7 into a list of bounding boxes and confidence scores.
 
-        This method assumes that a NMS layer with IOU threshold `self.IOU_THRESH` is part of the ONNX model.
+        The detection boxes are filtered using non maximum supression (NMS), with `self.IOU_THRESH` being the 
+        intersection over union threshold employed to discard the boxes whose IOU with the candidate box (of a given
+        NMS iteration) exceeds that value.
         Any predicted box with a confidence score lower than `self.CONF_THRESH` is also discarded.
         Args:
             data (Tuple): same as the output of `inference` method.
-            - List[np.array]: float arrays of predictions (one entry per image). Shape: n x [number of detections, 7]
-              Last dimension contains (0,x1,y1,x2,y2,class,confidence).
+            - torch.Tensor: float tensor of predictions. Shape: [number of grids, n, c, grid height, grid width, 6]
+              Last dimension contains (x1,y1,x2,y2,confidence,class).
             - List[np.array]: input images before preprocessing with OpenCV dimension ordering. 
                 Item shape: hwc.
             - List[np.array]: input images after preprocessing with OpenCV dimension ordering. 
@@ -120,20 +119,19 @@ class YoloONNXObjectDetector(BaseHandler):
         """
         t1 = time.time()
         preds, orig_images, preprocessed_images = data
+        preds = self.detect_ops(preds)
+
+        pred = non_max_suppression(preds[0], self.CONF_THRESH, self.IOU_THRESH)
 
         result = []
 
-        # We don't apply NMS because it's already embedded in the ONNX model exported by YOLOv7 export script
-
         # Process detections
-        # `det = preds[i]` -> detections in image `i`
-        for i, (det, orig_img, preprocessed_image) in enumerate(zip(preds, orig_images, preprocessed_images)): 
+        for i, (det, orig_img, preprocessed_image) in enumerate(zip(pred, orig_images, preprocessed_images)):  # detections per image
             if len(det):
-                det = torch.tensor(det)
                 # Rescale boxes from img_size to orig_img size
-                det[:, 1:5] = scale_coords(preprocessed_image.shape, det[:, 1:5], orig_img.shape).round()
+                det[:, :4] = scale_coords(preprocessed_image.shape, det[:, :4], orig_img.shape).round()
                 result_cur_img = [
-                    {'coords': np_det[1:5], 'conf': np_det[CONFIDENCE_IDX]} 
+                    {'coords': np_det[:4], 'conf': np_det[CONFIDENCE_IDX]} 
                     for np_det in det.tolist()
                 ]
             else:

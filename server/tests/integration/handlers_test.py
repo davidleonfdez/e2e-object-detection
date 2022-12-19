@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 import requests
 import time
-from torchserve.scripts.run_local_docker import run_with_docker_py as run_torchserve
+from objdetserver.scripts.run_local_docker import run_with_docker_py as run_torchserve
 
 
 def test_handlers():

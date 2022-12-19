@@ -5,7 +5,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from torchserve.yolo_onnx_handler import CONFIDENCE_IDX, YoloONNXObjectDetector
+from objdetserver.yolo_onnx_handler import CONFIDENCE_IDX, YoloONNXObjectDetector
 
 
 @dataclass

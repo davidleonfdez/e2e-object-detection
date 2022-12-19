@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import os
 import tempfile
-from torchserve.deploy.ec2.generate_user_data import generate_user_data
+from objdetserver.deploy.ec2.generate_user_data import generate_user_data
 
 
 S3_SUBTEMPLATE_PLACEHOLDER = "#$%S3_SUBTEMPLATE%$#"

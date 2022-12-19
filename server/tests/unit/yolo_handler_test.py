@@ -4,7 +4,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from torchserve.yolo_handler import CONFIDENCE_IDX, YoloObjectDetector
+from objdetserver.yolo_handler import CONFIDENCE_IDX, YoloObjectDetector
 
 
 class StubModule(nn.Module):
