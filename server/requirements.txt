@@ -3,7 +3,7 @@ boto3
 captum
 torch
 torch-model-archiver
-torchserve
+torchserve==0.6.1
 torchvision
 # torch==1.13.0+cpu
 # Temporary fix to TorchServe bug. It's not actually needed for our handlers.

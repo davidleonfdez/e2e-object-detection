@@ -5,5 +5,5 @@ docker
 pytest
 torch
 torch-model-archiver
-torchserve
+torchserve==0.6.1
 torchvision

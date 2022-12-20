@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
-FROM pytorch/torchserve:latest-cpu
+# 0.7.0 doesn't work with ONNX because of a bug
+#FROM pytorch/torchserve:latest-cpu
+FROM pytorch/torchserve:0.6.1-cpu
 
 WORKDIR /home/model-server
 
