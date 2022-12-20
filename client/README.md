@@ -1,9 +1,22 @@
 # Object detection client powered by Streamlit
 
+## Installation
+
+`pip install -r requirements.txt`
+
+## Running locally
+
+1. Set your model server url parts in [conf.yaml](conf.yaml)
+2. Start the Streamlit app:
+```
+streamlit run app.py
+```
+3. Open the app in your browser (tipically at localhost:8501)
+
 ## Updating the GRPC client
 
 This client asks for predictions to a model served by TorchServe, which exposes a REST and a gRPC API.
-In case TorchServe changes the gRPC API and you update the server, you may need to update the GRPC client too. In order
+In case TorchServe changes the gRPC API and you update the server, you may need to update the gRPC client too. In order
 to do so, follow the steps below:
 
 1. Replace the `grpc_aux/inference.proto` file with the one located at 

@@ -12,10 +12,14 @@ gRPC is not supported for now.
 ## Requirements
 
 - AWS CLI should be installed and configured on the computer where you execute the deployment script.
-- Install the development requirements (the other requirements.txt contains exclusively the packages
-  needed for an EC2 server), from the project root (server/):
+- Install the development environment from the project root (server/):
+
+    `pip install --extra-index-url https://download.pytorch.org/whl/cpu -e .[dev]`
+
+  If you have any issues regarding compatibility of library versions, install the locked development requirements (the 
+  other requirements.txt contains exclusively the packages needed for the EC2 server), from the project root (server/):
   ```
-    pip install -r dev-requirements.txt
+  pip install -r dev-requirements.txt
   ```
 
 ## Commands
