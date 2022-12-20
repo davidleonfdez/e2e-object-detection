@@ -1,5 +1,7 @@
 grpcio
 grpcio-tools
+# protobuf==3.20.1 should work in case compatibility issues arise
 protobuf
 pyyaml
 streamlit
+streamlit-webrtc

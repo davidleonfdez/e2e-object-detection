@@ -1,8 +1,10 @@
+import av
 from config import Config
 import io
 from PIL import Image, ImageDraw
 from services import BaseDetectionService, GRPCDetectionService, RestDetectionService
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer
 import time
 from typing import List, Dict
 
@@ -11,6 +13,9 @@ MAX_SIZE = 640
 COORDS_RESULT_KEY = 'coords'
 REST_API_SELECT_ITEM = "REST"
 GRPC_API_SELECT_ITEM = "gRPC"
+IMG_SOURCE_SELECT_ITEM = "Image"
+CAMERA_SOURCE_SELECT_ITEM = "Camera"
+STREAM_SOURCE_SELECT_ITEM = "Camera stream"
 
 
 @st.cache(ttl=300)
@@ -47,7 +52,7 @@ def scale_back_detections(detections:List[Dict], scale):
     ]
 
 
-def draw_detections(detections, img):
+def draw_detections(detections, img, display=True):
     if len(detections) == 0: 
         st.text("No objects detected!")
         return
@@ -59,13 +64,13 @@ def draw_detections(detections, img):
         upper_left_xy = detection[COORDS_RESULT_KEY][:2]
         draw.text(upper_left_xy, str(round(detection['conf'], 3)))
 
-    st.image(img)    
+    if display:
+        st.image(img)    
 
 
-def detect_and_draw(uploaded_file, sent_img_sz, detection_service:BaseDetectionService):
-    bytes_img = uploaded_file.getvalue()
-
-    img = bytes_to_image(bytes_img)
+def detect_and_draw(bytes_img, sent_img_sz, detection_service:BaseDetectionService, display=True, img:Image=None):
+    if img is None:
+        img = bytes_to_image(bytes_img)
     scale = sent_img_sz / max(img.size)
     should_resize = scale < 1
 
@@ -75,13 +80,15 @@ def detect_and_draw(uploaded_file, sent_img_sz, detection_service:BaseDetectionS
             resample=Image.Resampling.BILINEAR
         ))
 
+    #t1 = time.time()
     detection_result = detection_service.detect(bytes_img, config)
+    #st.text(f'Detection time: {time.time() - t1}')
 
     if not detection_result.is_error:
         detections = detection_result.detections
         if should_resize:
             detections = scale_back_detections(detections, scale)
-        draw_detections(detections, img)      
+        draw_detections(detections, img, display=display)      
     else:
         error_text = detection_result.error_msg
         st.error(error_text)
@@ -98,7 +105,27 @@ api_type = st.selectbox(
     options=[REST_API_SELECT_ITEM, GRPC_API_SELECT_ITEM]
 )
 
-uploaded_file = st.file_uploader("Upload an image", label_visibility="visible")
+source_type = st.selectbox(
+    label="Source",
+    options=[IMG_SOURCE_SELECT_ITEM, CAMERA_SOURCE_SELECT_ITEM, STREAM_SOURCE_SELECT_ITEM]
+)
 
-if uploaded_file is not None:
-    detect_and_draw(uploaded_file, sent_img_sz, get_service(api_type))
+
+def camera_stream_callback(frame):
+    img = frame.to_image()
+    detect_and_draw(image_to_bytes(img), sent_img_sz, get_service(api_type), display=True, img=img)
+    return av.VideoFrame.from_image(img)
+
+
+if source_type == IMG_SOURCE_SELECT_ITEM:
+    uploaded_file = st.file_uploader("Upload an image", label_visibility="visible")
+    bytes_img = uploaded_file.getvalue() if uploaded_file is not None else None
+elif source_type == CAMERA_SOURCE_SELECT_ITEM:
+    uploaded_file = st.camera_input("Take a picture")
+    bytes_img = uploaded_file.getvalue() if uploaded_file is not None else None
+else:
+    webrtc_streamer(key="Stream", video_frame_callback=camera_stream_callback)
+    bytes_img = None
+
+if bytes_img is not None:
+    detect_and_draw(bytes_img, sent_img_sz, get_service(api_type))
