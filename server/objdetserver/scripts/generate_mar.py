@@ -33,17 +33,17 @@ def _get_model_files(model_type):
         }
     if model_type == ModelType.TORCHSCRIPT:
         return {
-            #'handler': 'yolo_handler.py',
+            'handler': 'yolo_handler.py',
             'req': 'yolo_handler_requirements.txt',
             'extra_files': ['detect_ops.py', 'preprocess.py', 'yolo_utils.py'],
-            'handler': str(root_ts_path/'yolo_handler.py'),
+            #'handler': str(root_ts_path/'yolo_handler.py'),
             #'req': str(root_ts_path/'yolo_handler_requirements.txt'),
             #'extra_files': [str(root_ts_path/p) for p in ['detect_ops.py', 'preprocess.py', 'yolo_utils.py']]
         }
 
 
 def _get_base_handlers_path():
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parent.parent/'handlers'
 
 
 def build_command(args):
