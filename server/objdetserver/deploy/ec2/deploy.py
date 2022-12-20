@@ -22,12 +22,12 @@ def generate_user_data(model_name, include_s3_model_download:bool):
     out_path = Path(__file__).with_name('user_data_generated.sh')
     script_path = Path(__file__).with_name('generate_user_data.py')
     bucket_name_placeholder = BUCKET_NAME_PLACEHOLDER_IN_USER_DATA if include_s3_model_download else ''
-    cmd = (
-        f"python {script_path} --bucket-name {bucket_name_placeholder} --model-name {model_name} " 
-        + f"--output-path {out_path}"
-    )
+    cmd = [
+        "python", str(script_path), "--bucket-name", bucket_name_placeholder, "--model-name", model_name,
+        "--output-path", str(out_path)
+    ]
 
-    res = subprocess.run(cmd.split(), capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True)
 
     with open(out_path) as f:
         user_data = f.read()
