@@ -113,19 +113,18 @@ source_type = st.selectbox(
 
 def camera_stream_callback(frame):
     img = frame.to_image()
-    detect_and_draw(image_to_bytes(img), sent_img_sz, get_service(api_type), display=True, img=img)
+    detect_and_draw(image_to_bytes(img), sent_img_sz, get_service(api_type), display=False, img=img)
     return av.VideoFrame.from_image(img)
 
 
+uploaded_file = None
+
 if source_type == IMG_SOURCE_SELECT_ITEM:
     uploaded_file = st.file_uploader("Upload an image", label_visibility="visible")
-    bytes_img = uploaded_file.getvalue() if uploaded_file is not None else None
 elif source_type == CAMERA_SOURCE_SELECT_ITEM:
     uploaded_file = st.camera_input("Take a picture")
-    bytes_img = uploaded_file.getvalue() if uploaded_file is not None else None
 else:
     webrtc_streamer(key="Stream", video_frame_callback=camera_stream_callback)
-    bytes_img = None
 
-if bytes_img is not None:
-    detect_and_draw(bytes_img, sent_img_sz, get_service(api_type))
+if uploaded_file is not None:
+    detect_and_draw(uploaded_file.getvalue(), sent_img_sz, get_service(api_type))
