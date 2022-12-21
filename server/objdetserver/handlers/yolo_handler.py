@@ -6,8 +6,11 @@ from torchvision import transforms
 from ts.torch_handler.base_handler import BaseHandler
 
 
+ROOT_PACKAGE_NAME = "objdetserver"
+
+
 # Make aux files imports work for both tests and TorchServe
-is_test = "objdetserver." in __name__
+is_test = f"{ROOT_PACKAGE_NAME}." in __name__
 if is_test:
     from .detect_ops import IDetectOps
     from .preprocess import preprocess_images
@@ -19,16 +22,13 @@ else:
     from yolo_utils import non_max_suppression, scale_coords
 
 
-CONFIDENCE_IDX = 4
-NUM_CLASSES = 1
-
-
 class YoloObjectDetector(BaseHandler):
     "TorchServe object detection handler for a YOLO v7 model compiled with TorchScript"
     image_processing = transforms.Compose([transforms.ToTensor()])
     CONF_THRESH = 0.25
     IOU_THRESH = 0.65
     IMG_SIZE = 640
+    CONFIDENCE_IDX = 4
     detect_ops = IDetectOps()
     
     def initialize(self, context):
@@ -131,7 +131,7 @@ class YoloObjectDetector(BaseHandler):
                 # Rescale boxes from img_size to orig_img size
                 det[:, :4] = scale_coords(preprocessed_image.shape, det[:, :4], orig_img.shape).round()
                 result_cur_img = [
-                    {'coords': np_det[:4], 'conf': np_det[CONFIDENCE_IDX]} 
+                    {'coords': np_det[:4], 'conf': np_det[self.CONFIDENCE_IDX]} 
                     for np_det in det.tolist()
                 ]
             else:

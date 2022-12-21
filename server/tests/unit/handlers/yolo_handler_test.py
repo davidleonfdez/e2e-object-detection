@@ -4,7 +4,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from objdetserver.handlers.yolo_handler import CONFIDENCE_IDX, YoloObjectDetector
+from objdetserver.handlers.yolo_handler import YoloObjectDetector
 
 
 class StubModule(nn.Module):
@@ -98,7 +98,7 @@ def test_yolo_object_detector():
         for expected_grid_model_output in expected_model_output:
             # Confidence should go through sigmoid, so 0 is 0.5, -inf is 0 and inf is 1
             # Here we set random values between -2 and 2 (sigmoid(2) ~ 0.88, enough to be chosen)
-            expected_grid_model_output[..., CONFIDENCE_IDX] = (torch.rand(expected_grid_model_output.shape[:-1]) - 0.5) * 4
+            expected_grid_model_output[..., handler.CONFIDENCE_IDX] = (torch.rand(expected_grid_model_output.shape[:-1]) - 0.5) * 4
         handler.model = StubModule(expected_model_output)
         preds, orig_images, preprocessed_images = handler.inference((tensors, orig_images, preprocessed_images))
         assert all(

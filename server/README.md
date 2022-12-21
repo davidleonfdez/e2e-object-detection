@@ -19,7 +19,7 @@ mv object_detector.mar /home/random_user/model_store
 python objdetserver/scripts/run_local_docker.py /home/random_user/model_store
 ```
 
-# Deploying to AWS
+## Deploying to AWS
 
 For scripts and instructions on how to deploy to AWS, see the README files located at 
 [objdetserver/deploy/ec2](objdetserver/deploy/ec2) and 

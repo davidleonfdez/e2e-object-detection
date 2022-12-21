@@ -5,7 +5,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from objdetserver.handlers.yolo_onnx_handler import CONFIDENCE_IDX, YoloONNXObjectDetector
+from objdetserver.handlers.yolo_onnx_handler import YoloONNXObjectDetector
 
 
 @dataclass
@@ -136,7 +136,7 @@ def test_yolo_onnx_object_detector():
         def _detection_matches_expectation(det, expected_det_arr):
             return (
                 np.allclose(det['coords'], expected_det_arr[1:5], rtol=0, atol=0.01) 
-                and (det['conf'] == expected_det_arr[CONFIDENCE_IDX])
+                and (det['conf'] == expected_det_arr[handler.CONFIDENCE_IDX])
             )
         assert all(
             _detection_matches_expectation(det, expected_det_arr)

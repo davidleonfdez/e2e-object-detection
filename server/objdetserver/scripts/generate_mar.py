@@ -1,5 +1,6 @@
 import argparse
 from enum import auto, Enum
+from objdetserver.handlers import constants
 import os
 from pathlib import Path
 import shutil
@@ -21,29 +22,22 @@ def _get_model_type(args):
 
 
 def _get_model_files(model_type):
-    root_ts_path = Path(__file__).parent.parent
     if model_type == ModelType.ONNX:
         return {
-            'handler': 'yolo_onnx_handler.py',
-            'req': 'yolo_onnx_handler_requirements.txt',
-            'extra_files': ['preprocess.py', 'yolo_utils.py']
-            #'handler': str(root_ts_path/'yolo_onnx_handler.py'),
-            #'req': str(root_ts_path/'yolo_onnx_handler_requirements.txt'),
-            #'extra_files': [str(root_ts_path/p) for p in ['preprocess.py', 'yolo_utils.py']]
+            'handler': constants.ONNX_HANDLER_FILENAME,
+            'req': constants.ONNX_HANDLER_REQS_FILENAME,
+            'extra_files': constants.ONNX_HANDLER_EXTRA_FILES,
         }
     if model_type == ModelType.TORCHSCRIPT:
         return {
-            'handler': 'yolo_handler.py',
-            'req': 'yolo_handler_requirements.txt',
-            'extra_files': ['detect_ops.py', 'preprocess.py', 'yolo_utils.py'],
-            #'handler': str(root_ts_path/'yolo_handler.py'),
-            #'req': str(root_ts_path/'yolo_handler_requirements.txt'),
-            #'extra_files': [str(root_ts_path/p) for p in ['detect_ops.py', 'preprocess.py', 'yolo_utils.py']]
+            'handler': constants.TORCHSCRIPT_HANDLER_FILENAME,
+            'req': constants.TORCHSCRIPT_HANDLER_REQS_FILENAME,
+            'extra_files': constants.TORCHSCRIPT_HANDLER_EXTRA_FILES,
         }
 
 
 def _get_base_handlers_path():
-    return Path(__file__).resolve().parent.parent/'handlers'
+    return Path(__file__).resolve().parent.parent/constants.HANDLERS_DIRNAME
 
 
 def build_command(args):

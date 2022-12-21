@@ -1,27 +1,19 @@
 import argparse
-from botocore.exceptions import ClientError
 import boto3
-from enum import auto, Enum
 from pathlib import Path
 import random
 import subprocess
 import time
+from objdetserver.handlers import constants
+from objdetserver.deploy.constants import ec2 as deploy_constants
 from objdetserver.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
 
 
-TEMPLATE_FILENAME = 'cfn_stack.yaml'
-TEMPLATE_FILENAME_ASG = 'asg_stack.yaml'
-BUCKET_NAME_STACK_OUT = 'S3BucketName'
-LAMBDA_ARN_STACK_OUT = 'LambdaArn'
-
-# If you edit this value, you should edit the same in asg_stack.yaml
-BUCKET_NAME_PLACEHOLDER_IN_USER_DATA = '__BUCKET_NAME__'
-
-
 def generate_user_data(model_name, include_s3_model_download:bool):
-    out_path = Path(__file__).with_name('user_data_generated.sh')
-    script_path = Path(__file__).with_name('generate_user_data.py')
-    bucket_name_placeholder = BUCKET_NAME_PLACEHOLDER_IN_USER_DATA if include_s3_model_download else ''
+    cts = deploy_constants
+    out_path = Path(__file__).with_name(cts.USER_DATA_OUT_FILENAME)
+    script_path = Path(__file__).with_name(cts.GENERATE_USER_DATA_SCRIPT_FILENAME)
+    bucket_name_placeholder = cts.BUCKET_NAME_PLACEHOLDER_IN_USER_DATA if include_s3_model_download else ''
     cmd = [
         "python", str(script_path), "--bucket-name", bucket_name_placeholder, "--model-name", model_name,
         "--output-path", str(out_path)
@@ -41,7 +33,7 @@ def deploy_stack(client, stack_name:str, test:bool, user_data:str, asg:bool, ins
     else:
         is_new_stack = not stack_exists(client, stack_name)
     
-    template_filename = TEMPLATE_FILENAME_ASG if asg else TEMPLATE_FILENAME
+    template_filename = deploy_constants.TEMPLATE_FILENAME_ASG if asg else deploy_constants.TEMPLATE_FILENAME
     template_path = Path(__file__).resolve().with_name(template_filename)
     
     # boto3 cloudformation client doesn't have a deploy method, so we use CLI.
@@ -105,9 +97,9 @@ def copy_mar_to_s3(local_mar_path, bucket_name, model_name):
 
 
 def generate_mar(model_name, model_path):
-    # TODO: is it an error-prone/fragile way of getting path?
-    scripts_path = Path(__file__).resolve().parent.parent.parent/'scripts'
-    cmd = f"python {scripts_path/'generate_mar.py'} --model-name {model_name} {model_path}"
+    scripts_path = Path(__file__).resolve().parent.parent.parent/constants.SCRIPTS_DIRNAME
+    generate_mar_script_path = scripts_path/constants.GENERATE_MAR_SCRIPT_FILENAME
+    cmd = f"python {generate_mar_script_path} --model-name {model_name} {model_path}"
     subprocess.run(cmd.split())
 
     mar_path = Path(f'./{model_name}.mar')
@@ -115,8 +107,6 @@ def generate_mar(model_name, model_path):
 
 
 def deploy(args):
-    #session = boto3.Session(region_name = 'us-west-2')
-    #cfn = session.resource('cloudformation')
     client = boto3.client('cloudformation')
 
     print('Generating UserData script...')
@@ -133,8 +123,8 @@ def deploy(args):
     if not args.test:
         print('Setting S3 notifications...')
         stack_out = get_stack_output(client, stack_name)
-        bucket_name = stack_out[BUCKET_NAME_STACK_OUT]
-        set_bucket_notification(bucket_name, stack_out[LAMBDA_ARN_STACK_OUT])
+        bucket_name = stack_out[deploy_constants.BUCKET_NAME_STACK_OUT]
+        set_bucket_notification(bucket_name, stack_out[deploy_constants.LAMBDA_ARN_STACK_OUT])
         print('...Finished setting S3 notifications')
 
         print('Generating .mar file...')

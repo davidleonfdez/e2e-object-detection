@@ -63,7 +63,6 @@ def _get_torchserve_start():
 
 
 def generate_user_data(args):
-    print('args.bucket_name = ', args.bucket_name)
     script_str = _get_shebang()
     script_str += _get_torchserve_prereqs()
     script_str += _get_requirements(args.req_path)

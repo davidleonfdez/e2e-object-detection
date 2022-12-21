@@ -6,8 +6,11 @@ import torch
 from ts.torch_handler.base_handler import BaseHandler
 
 
+ROOT_PACKAGE_NAME = "objdetserver"
+
+
 # Make aux files imports work for both tests and TorchServe
-is_test = "objdetserver." in __name__
+is_test = f"{ROOT_PACKAGE_NAME}." in __name__
 if is_test:
     from .preprocess import preprocess_images
     from .yolo_utils import scale_coords
@@ -17,10 +20,6 @@ else:
     from yolo_utils import scale_coords
 
 
-CONFIDENCE_IDX = 6
-NUM_CLASSES = 1
-
-
 class YoloONNXObjectDetector(BaseHandler):
     "TorchServe object detection handler for a YOLO v7 model with ONNX format and NMS included"
     # These thresholds are just informative. The actual thresholds are embedded inside the ONNX model
@@ -28,6 +27,7 @@ class YoloONNXObjectDetector(BaseHandler):
     CONF_THRESH = 0.25
     IOU_THRESH = 0.65
     IMG_SIZE = 640
+    CONFIDENCE_IDX = 6
     
     def initialize(self, context):
         super().initialize(context)
@@ -133,7 +133,7 @@ class YoloONNXObjectDetector(BaseHandler):
                 # Rescale boxes from img_size to orig_img size
                 det[:, 1:5] = scale_coords(preprocessed_image.shape, det[:, 1:5], orig_img.shape).round()
                 result_cur_img = [
-                    {'coords': np_det[1:5], 'conf': np_det[CONFIDENCE_IDX]} 
+                    {'coords': np_det[1:5], 'conf': np_det[self.CONFIDENCE_IDX]} 
                     for np_det in det.tolist()
                 ]
             else:

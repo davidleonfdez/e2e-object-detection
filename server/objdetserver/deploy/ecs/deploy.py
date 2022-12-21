@@ -9,10 +9,9 @@ import random
 import shutil
 import subprocess
 import time
+from objdetserver.handlers import constants
+from objdetserver.deploy.constants import ecs as deploy_constants
 from objdetserver.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
-
-
-TEMPLATE_FILENAME = 'ecs_stack.yaml'
 
 
 class AWSClientManager:
@@ -39,8 +38,8 @@ class AWSClientManager:
 
 
 def generate_mar(model_name, model_path):
-    scripts_path = Path(__file__).resolve().parent.parent.parent/'scripts'
-    cmd = f"python {scripts_path/'generate_mar.py'} --model-name {model_name} {model_path}"
+    scripts_path = Path(__file__).resolve().parent.parent.parent/constants.SCRIPTS_DIRNAME
+    cmd = f"python {scripts_path/constants.GENERATE_MAR_SCRIPT_FILENAME} --model-name {model_name} {model_path}"
     subprocess.run(cmd.split())
 
     mar_path = Path(f'./{model_name}.mar')
@@ -66,7 +65,7 @@ def build_image(docker_client:docker.DockerClient, image_name, mar_path):
         docker_client.images.build(
             path=str(root_path),
             tag=image_name,
-            buildargs = {"mar_path": str(mar_path)},
+            buildargs = {deploy_constants.DOCKERFILE_MAR_PATH_ARG: str(mar_path)},
             rm=True,
         )
     finally:
@@ -117,7 +116,7 @@ def deploy_stack(client, stack_name:str, ecr_image_name:str, instance_type:str):
     else:
         is_new_stack = not stack_exists(client, stack_name)
     
-    template_path = Path(__file__).resolve().with_name(TEMPLATE_FILENAME)
+    template_path = Path(__file__).resolve().with_name(deploy_constants.TEMPLATE_FILENAME)
     
     # boto3 cloudformation client doesn't have a deploy method, so we use CLI.
     # The boto3 alternative would be to:

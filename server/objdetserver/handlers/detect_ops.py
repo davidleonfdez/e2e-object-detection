@@ -2,7 +2,16 @@ import torch
 import torch.nn as nn
 
 
-NUM_CLASSES = 1
+ROOT_PACKAGE_NAME = "objdetserver"
+
+
+# Make aux files imports work for both tests and TorchServe
+is_test = f"{ROOT_PACKAGE_NAME}." in __name__
+if is_test:
+    from . import constants
+else:
+    # Inside TorchServe server
+    import constants
 
 
 class IDetectOps(nn.Module):
@@ -19,7 +28,7 @@ class IDetectOps(nn.Module):
     def __init__(self):
         super(IDetectOps, self).__init__()
         nl = len(self.anchors)  # number of detection layers
-        self.no = NUM_CLASSES + 5
+        self.no = constants.NUM_CLASSES + 5
         self.grid = []#[torch.zeros(1)] * self.nl  # init grid
         self.anchor_grid = torch.Tensor(self.anchors).view(nl, 1, -1, 1, 1, 2)
 
