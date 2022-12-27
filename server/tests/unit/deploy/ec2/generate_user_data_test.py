@@ -66,7 +66,7 @@ def test_generate_user_data():
     #with tempfile.NamedTemporaryFile(mode='w', delete=False) as fake_reqs_f:
     fake_reqs_f = tempfile.NamedTemporaryFile(mode='w', delete=False)
     fake_conf_f = tempfile.NamedTemporaryFile(mode='w', delete=False)
-    print('file name = ', fake_reqs_f.name, fake_conf_f.name)
+
     try:
         fake_reqs_f.write(requirements)
         fake_reqs_f.close()
@@ -91,7 +91,6 @@ def test_generate_user_data():
             fake_reqs_f.name,
             fake_conf_f.name,
         ))
-        print(expected_script_str, generated_script_str)
         assert expected_script_str == generated_script_str
 
         expected_script_nobucket_str = (
@@ -106,7 +105,6 @@ def test_generate_user_data():
             fake_reqs_f.name,
             fake_conf_f.name,
         ))
-        print(expected_script_nobucket_str, generated_script_nobucket_str)
         assert expected_script_nobucket_str == generated_script_nobucket_str
 
     finally:

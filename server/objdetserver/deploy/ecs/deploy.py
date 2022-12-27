@@ -3,15 +3,21 @@ import base64
 import boto3
 from botocore.exceptions import ClientError
 import docker
+import logging
 import os
 from pathlib import Path
 import random
 import shutil
 import subprocess
 import time
-from objdetserver.handlers import constants
 from objdetserver.deploy.constants import ecs as deploy_constants
 from objdetserver.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
+from objdetserver.handlers import constants
+from objdetserver.logging import configure_deploy_ecs_logger
+
+
+configure_deploy_ecs_logger()
+logger = logging.getLogger(__name__)
 
 
 class AWSClientManager:
@@ -143,37 +149,41 @@ def deploy_stack(client, stack_name:str, ecr_image_name:str, instance_type:str):
 
 
 def deploy(args):
+    logger.info(f'Running ECS deployment script with args = {args}')
+
     docker_client = docker.from_env()
     aws_client = AWSClientManager()
     ecr_client = aws_client.get('ecr')
 
-    print('Generating .mar file...')
+    logger.info('Generating .mar file...')
     mar_path = generate_mar(args.model_name, args.model_path)
     if not mar_path.exists():
-        raise RuntimeError('Failed to generate .mar file')
-    print('...Generated .mar file')
+        mar_error_msg = 'Failed to generate .mar file'
+        logger.error(mar_error_msg)
+        raise RuntimeError(mar_error_msg)
+    logger.info('...Generated .mar file')
 
-    print('Building Docker image...')
+    logger.info('Building Docker image...')
     build_image(docker_client, args.image_name, mar_path)
-    print('...Built Docker image')
+    logger.info('...Built Docker image')
 
-    print('Setting up ECR repository...')
+    logger.info('Setting up ECR repository...')
     log_into_ecr_registry(aws_client, docker_client)
     maybe_create_ecr_repo(ecr_client, args.image_name)
-    print('...Finished setting up ECR repository')
+    logger.info('...Finished setting up ECR repository')
 
-    print('Pushing image to ECR repository...')
+    logger.info('Pushing image to ECR repository...')
     tag_image_for_ecr(aws_client, docker_client, args.image_name)
-    print('...Pushed image to ECR repository')
+    logger.info('...Pushed image to ECR repository')
 
-    print('Deploying CloudFormation stack...')
+    logger.info('Deploying CloudFormation stack...')
     stack_name = deploy_stack(
         aws_client.get('cloudformation'), 
         args.stack_name, 
         get_ecr_image_name(aws_client, args.image_name),
         args.instance_type
     )
-    print(f'...Deployed CloudFormation stack {stack_name}')
+    logger.info(f'...Deployed CloudFormation stack {stack_name}')
 
 
 if __name__ == '__main__':    

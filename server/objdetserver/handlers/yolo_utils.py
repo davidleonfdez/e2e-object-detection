@@ -1,9 +1,13 @@
 import cv2
 import itertools
+import logging
 import numpy as np
 import time
 import torch
 import torchvision
+
+
+logger = logging.getLogger(__name__)
 
 
 def map_class_to_label(probs, mapping=None, lbl_classes=None):
@@ -154,7 +158,7 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
 
         output[xi] = x[i]
         if (time.time() - t) > time_limit:
-            print(f'WARNING: NMS time limit {time_limit}s exceeded')
+            logger.info(f'WARNING: NMS time limit {time_limit}s exceeded')
             break  # time limit exceeded
 
     return output

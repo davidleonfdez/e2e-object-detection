@@ -1,4 +1,5 @@
 from captum.attr import IntegratedGradients
+import logging
 from PIL import Image
 import numpy as np
 import time
@@ -18,6 +19,9 @@ else:
     # Inside TorchServe server
     from preprocess import preprocess_images
     from yolo_utils import scale_coords
+
+
+logger = logging.getLogger(__name__)
 
 
 class YoloONNXObjectDetector(BaseHandler):
@@ -57,7 +61,7 @@ class YoloONNXObjectDetector(BaseHandler):
         t1 = time.time()
         orig_images, preprocessed_images = preprocess_images(data, pad=True)
         model_inputs = (np.stack(preprocessed_images).astype(np.float32) / 255).transpose(0, 3, 1, 2)
-        print('preprocess time = ', time.time() - t1)
+        logger.info(f'Preprocessing time: {time.time() - t1}')
 
         return model_inputs, orig_images, preprocessed_images
     
@@ -91,7 +95,7 @@ class YoloONNXObjectDetector(BaseHandler):
 
         ort_inputs = {self.model.get_inputs()[0].name: arrays}
         preds = self.model.run(None, ort_inputs)
-        print('Inference time: ', time.time() - t1)
+        logger.info(f'Inference time: {time.time() - t1}')
 
         return preds, orig_images, preprocessed_images
 
@@ -140,9 +144,9 @@ class YoloONNXObjectDetector(BaseHandler):
                 result_cur_img = []
             result.append(result_cur_img)
 
-        print('Postprocess time: ', time.time() - t1)
+        logger.info(f'Postprocessing time: {time.time() - t1}')
         return result
 
     def get_insights(self, tensor_data, _, target=0):
-        print("input shape", tensor_data.shape)
+        logger.info(f'input shape {tensor_data.shape}')
         return self.ig.attribute(tensor_data, target=target, n_steps=15).tolist()

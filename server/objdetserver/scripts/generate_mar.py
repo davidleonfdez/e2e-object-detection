@@ -1,10 +1,14 @@
 import argparse
 from enum import auto, Enum
+import logging
 from objdetserver.handlers import constants
 import os
 from pathlib import Path
 import shutil
 import subprocess
+
+
+logger = logging.getLogger()
 
 
 class ModelType(Enum):
@@ -95,6 +99,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     script_arr = build_command(args)
-    print(' '.join([str(cmd_item) for cmd_item in script_arr]))
+    script_str = ' '.join([str(cmd_item) for cmd_item in script_arr])
+    logger.info('Generating .mar with command: ', script_str)
 
     exec_command(script_arr, args)

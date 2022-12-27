@@ -1,12 +1,18 @@
 import argparse
 import boto3
+import logging
 from pathlib import Path
 import random
 import subprocess
 import time
-from objdetserver.handlers import constants
 from objdetserver.deploy.constants import ec2 as deploy_constants
 from objdetserver.deploy.deploy_utils import stack_exists, wait_for_stack_creation, wait_for_stack_update
+from objdetserver.handlers import constants
+from objdetserver.logging import configure_deploy_ec2_logger
+
+
+configure_deploy_ec2_logger()
+logger = logging.getLogger(__name__)
 
 
 def generate_user_data(model_name, include_s3_model_download:bool):
@@ -107,33 +113,35 @@ def generate_mar(model_name, model_path):
 
 
 def deploy(args):
+    logger.info(f'Running EC2 deployment script with args = {args}')
+
     client = boto3.client('cloudformation')
 
-    print('Generating UserData script...')
+    logger.info('Generating UserData script...')
     # For a single EC2 instance, the user data script doesn't need to include code to download
     # the model from S3, as the copy will be triggered when we copy the model to S3 after the
     # stack has been deployed.
     user_data = generate_user_data(args.model_name, include_s3_model_download=args.asg)
-    print('...Generated UserData script')
+    logger.info('...Generated UserData script')
 
-    print('Deploying CloudFormation stack...')
+    logger.info('Deploying CloudFormation stack...')
     stack_name = deploy_stack(client, args.stack_name, args.test, user_data, args.asg, args.instance_type)
-    print(f'...Deployed CloudFormation stack {stack_name}')
+    logger.info(f'...Deployed CloudFormation stack {stack_name}')
 
     if not args.test:
-        print('Setting S3 notifications...')
+        logger.info('Setting S3 notifications...')
         stack_out = get_stack_output(client, stack_name)
         bucket_name = stack_out[deploy_constants.BUCKET_NAME_STACK_OUT]
         set_bucket_notification(bucket_name, stack_out[deploy_constants.LAMBDA_ARN_STACK_OUT])
-        print('...Finished setting S3 notifications')
+        logger.info('...Finished setting S3 notifications')
 
-        print('Generating .mar file...')
+        logger.info('Generating .mar file...')
         mar_path = generate_mar(args.model_name, args.model_path)
-        print('...Generated .mar file')
+        logger.info('...Generated .mar file')
 
-        print('Copying .mar file to S3...')
+        logger.info('Copying .mar file to S3...')
         copy_mar_to_s3(mar_path, bucket_name, args.model_name)
-        print('...Copied .mar file to S3')
+        logger.info('...Copied .mar file to S3')
 
 
 if __name__ == '__main__':

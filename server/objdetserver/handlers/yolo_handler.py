@@ -1,4 +1,5 @@
 from captum.attr import IntegratedGradients
+import logging
 from PIL import Image
 import time
 import torch
@@ -20,6 +21,9 @@ else:
     from detect_ops import IDetectOps
     from preprocess import preprocess_images
     from yolo_utils import non_max_suppression, scale_coords
+
+
+logger = logging.getLogger(__name__)
 
 
 class YoloObjectDetector(BaseHandler):
@@ -60,7 +64,7 @@ class YoloObjectDetector(BaseHandler):
         t1 = time.time()
         orig_images, preprocessed_images = preprocess_images(data)
         tensors = torch.stack([self.image_processing(prepro_img) for prepro_img in preprocessed_images])
-        print('preprocess time = ', time.time() - t1)
+        logger.info(f'Preprocessing time: {time.time() - t1}')
 
         return tensors.to(self.device), orig_images, preprocessed_images
     
@@ -90,7 +94,7 @@ class YoloObjectDetector(BaseHandler):
         t1 = time.time()
         tensors, orig_images, preprocessed_images = data
         preds = super().inference(tensors, *args, **kwargs)
-        print('Inference time: ', time.time() - t1)
+        logger.info(f'Inference time: {time.time() - t1}')
         return preds, orig_images, preprocessed_images
 
     def postprocess(self, data):
@@ -138,9 +142,9 @@ class YoloObjectDetector(BaseHandler):
                 result_cur_img = []
             result.append(result_cur_img)
 
-        print('Postprocess time: ', time.time() - t1)
+        logger.info(f'Postprocessing time: {time.time() - t1}')
         return result
 
     def get_insights(self, tensor_data, _, target=0):
-        print("input shape", tensor_data.shape)
+        logger.info('input shape {tensor_data.shape}')
         return self.ig.attribute(tensor_data, target=target, n_steps=15).tolist()

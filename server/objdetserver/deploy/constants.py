@@ -11,12 +11,14 @@ class EC2:
     BUCKET_NAME_PLACEHOLDER_IN_USER_DATA = '__BUCKET_NAME__'
     GENERATE_USER_DATA_SCRIPT_FILENAME = 'generate_user_data.py'
     USER_DATA_OUT_FILENAME = 'user_data_generated.sh'
+    LOG_FILENAME = 'deploy_ec2_log.log'
 
 
 @dataclass(frozen=True)
 class ECS:
     TEMPLATE_FILENAME = 'ecs_stack.yaml'
     DOCKERFILE_MAR_PATH_ARG = 'mar_path'
+    LOG_FILENAME = 'deploy_ecs_log.log'
 
 
 ec2 = EC2()
