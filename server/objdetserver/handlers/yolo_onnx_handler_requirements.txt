@@ -1,4 +1,5 @@
-# Use headless version for Docker image
-opencv-python-headless >= 4.1.1
-opencv-contrib-python-headless >= 4.1.1
+# -Use headless version for Docker image
+# -Upper bound added to prevent opencv-python v4.7 issue: https://github.com/opencv/opencv-python/issues/765
+opencv-python-headless >= 4.1.1, < 4.7
+opencv-contrib-python-headless >= 4.1.1, < 4.7
 onnxruntime
